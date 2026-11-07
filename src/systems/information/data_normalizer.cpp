@@ -1,6 +1,6 @@
 #include "seventh/systems/information/data_normalizer.hpp"
 
-#include <cctype>
+#include <utility>
 
 namespace seventh::information {
 namespace {
