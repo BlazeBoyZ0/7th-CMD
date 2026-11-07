@@ -67,6 +67,17 @@ CommandSubsystem::CommandSubsystem(
     }
     capabilities_.register_capability(std::move(open_folder));
 
+    capabilities::CapabilityDefinition search_files;
+    search_files.id = "filesystem.search";
+    search_files.description = "Search one directory within the user's home directory.";
+    search_files.operations = {"search_files"};
+    search_files.enabled = true;
+    search_files.read_only = true;
+    if (const char* home = std::getenv("HOME")) {
+        search_files.allowed_roots.emplace_back(home);
+    }
+    capabilities_.register_capability(std::move(search_files));
+
     capabilities::CapabilityDefinition launch_application;
     launch_application.id = "application.launch";
     launch_application.description = "Launch an installed desktop application.";
@@ -403,6 +414,83 @@ SubsystemResult CommandSubsystem::open_target(
     return result;
 }
 
+
+SubsystemResult CommandSubsystem::search_items(
+    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
+    const char* home = std::getenv("HOME");
+    if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
+
+    const auto directory = intent.destination.empty()
+        ? std::string(home) : resolve_destination(intent.destination);
+    if (directory.empty()) return failure(request.request_id, "The search directory could not be resolved.");
+
+    std::error_code ec;
+    if (!std::filesystem::is_directory(directory, ec) || ec) {
+        return failure(request.request_id, "The search location does not exist or cannot be accessed.");
+    }
+
+    permissions::PermissionRequest permission_request;
+    permission_request.capability_id = "filesystem.search";
+    permission_request.operation = "search_files";
+    permission_request.resource_path = directory;
+    const auto permission = permission_manager_.authorize(permission_request);
+    if (permission.decision != permissions::PermissionDecision::Allowed) {
+        return failure(request.request_id, permission.reason);
+    }
+
+    planning::PlanningRequest planning_request;
+    planning_request.goal = "Search " + intent.entity_type + " entries in " + directory;
+    planning::TaskDraft draft;
+    draft.id = "search-items";
+    draft.operation = "search_files";
+    draft.input_data["path"] = directory;
+    draft.input_data["query"] = intent.query;
+    draft.input_data["entity_type"] = intent.entity_type;
+    planning_request.tasks.push_back(std::move(draft));
+    auto plan = planning_engine_.create_plan(planning_request);
+    if (!plan.valid || plan.tasks.empty()) {
+        return failure(request.request_id, "Unable to create a valid search plan.");
+    }
+    if (!plan_state_manager_.start(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The search task could not enter the running state.");
+    }
+
+    execution::ExecutionRequest execution_request;
+    execution_request.task_id = request.task_id;
+    execution_request.operation = "search_files";
+    execution_request.input_data = plan.tasks.front().input_data;
+    execution_request.requires_authorization = true;
+    execution_request.authorization_granted = true;
+    const auto executed = execution_engine_.execute(execution_request);
+    if (executed.status != execution::ExecutionStatus::Success) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        return failure(request.request_id, executed.error);
+    }
+    plan_state_manager_.complete(plan, plan.tasks.front().id);
+
+    verification::VerificationRequest verification_request;
+    verification_request.operation = "search_files";
+    verification_request.expected["directory"] = directory;
+    verification_request.actual["directory"] = executed.output_data.contains("directory")
+        ? executed.output_data.at("directory") : "";
+    if (!verification_system_.verify(verification_request).verified) {
+        return failure(request.request_id, "The search result could not be verified.");
+    }
+
+    SubsystemResult result;
+    result.request_id = request.request_id;
+    result.status = SubsystemStatus::Success;
+    result.result_data["operation"] = "search";
+    result.result_data["entity_type"] = intent.entity_type;
+    result.result_data["directory"] = directory;
+    result.result_data["query"] = intent.query;
+    result.result_data["count"] = executed.output_data.contains("count")
+        ? executed.output_data.at("count") : "0";
+    result.result_data["matches"] = executed.output_data.contains("matches")
+        ? executed.output_data.at("matches") : "";
+    return result;
+}
+
 SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     const auto raw = request.input_data.find("raw_input");
     if (raw == request.input_data.end() || raw->second.empty()) {
@@ -430,6 +518,9 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     }
     if (intent.operation == "create" && intent.entity_type == "folder") {
         return create_folder(request, intent);
+    }
+    if (intent.operation == "search") {
+        return search_items(request, intent);
     }
     return failure(request.request_id,
         "The current end-to-end workflow supports folder creation and opening applications or folders.");

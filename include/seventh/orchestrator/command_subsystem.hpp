@@ -31,6 +31,8 @@ private:
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
     [[nodiscard]] SubsystemResult open_target(
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
+    [[nodiscard]] SubsystemResult search_items(
+        const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
 
     platform::PlatformInterface& platform_;
     grammar::GrammarEngine grammar_engine_;

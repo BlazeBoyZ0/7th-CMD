@@ -80,8 +80,19 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
     } else if (node.operation == "delete" || node.operation == "open") {
         intent.name = join(tokens, target_start, tokens.size());
     } else if (node.operation == "search") {
-        intent.query = join(tokens, target_start, tokens.size());
-        if (intent.query.empty()) intent.query = join(tokens, 1, tokens.size());
+        auto query_start = target_start;
+        const auto named = find_token(tokens, "named", target_start);
+        if (named < tokens.size()) query_start = named + 1;
+        else if (query_start < tokens.size() && lower(tokens[query_start]) == "for") {
+            ++query_start;
+        }
+
+        auto location = find_token(tokens, "in", query_start);
+        if (location == tokens.size()) location = tokens.size();
+        intent.query = join(tokens, query_start, location);
+        if (location < tokens.size() && location + 1 < tokens.size()) {
+            intent.destination = join(tokens, location + 1, tokens.size());
+        }
     }
 
     if (node.operation == "create" && intent.name.empty()) {
@@ -95,9 +106,6 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
     if ((node.operation == "delete" || node.operation == "open") &&
         intent.name.empty()) {
         intent.missing_information.emplace_back("target");
-    }
-    if (node.operation == "search" && intent.query.empty()) {
-        intent.missing_information.emplace_back("search query");
     }
 
     intent.valid = intent.missing_information.empty();
