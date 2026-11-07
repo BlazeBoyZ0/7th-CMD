@@ -8,7 +8,9 @@ void InteractionCoordinator::request_missing_information(
         knowledge::ClarificationRequest request;
         request.task_id = task_id;
         request.required_field = field;
-        request.question = "Please provide " + field + ".";
+        request.question = field.find("choice") != std::string::npos
+            ? "Choose one of the listed options by number, name, or full path."
+            : "Please provide " + field + ".";
         clarifications_.request(request);
     }
 }

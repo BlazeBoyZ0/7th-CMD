@@ -8,11 +8,13 @@
 #include "seventh/systems/information/platform_data_providers.hpp"
 #include "seventh/systems/information/provider_registry.hpp"
 
+#include <charconv>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -34,13 +36,73 @@ SubsystemResult failure(const RequestId& id, std::string message) {
     return result;
 }
 
-SubsystemResult needs_choice(const RequestId& id, const std::string& kind) {
+SubsystemResult needs_choice(
+    const RequestId& id, const std::string& kind,
+    const std::vector<entity_resolution::EntityCandidate>& candidates,
+    bool invalid_answer = false) {
     SubsystemResult result;
     result.request_id = id;
     result.status = SubsystemStatus::NeedsInformation;
     result.missing_information.emplace_back(kind + " choice");
-    result.error = "More than one matching " + kind + " was found.";
+    result.error = invalid_answer
+        ? "The supplied choice did not identify exactly one matching " + kind + "."
+        : "More than one matching " + kind + " was found.";
+
+    result.result_data["choice_kind"] = kind;
+    result.result_data["choice_count"] = std::to_string(candidates.size());
+    std::string options;
+    constexpr std::size_t max_options = 10;
+    const auto displayed = std::min(candidates.size(), max_options);
+    for (std::size_t index = 0; index < displayed; ++index) {
+        const auto& candidate = candidates[index];
+        if (!options.empty()) options += '\\n';
+        options += std::to_string(index + 1) + ". " + candidate.name +
+                   " | " + candidate.id;
+        if (!candidate.location.empty()) options += " | " + candidate.location;
+    }
+    result.result_data["choice_options"] = std::move(options);
+    result.result_data["choice_truncated"] =
+        candidates.size() > displayed ? "true" : "false";
     return result;
+}
+
+std::optional<entity_resolution::EntityCandidate> choose_candidate(
+    const SubsystemRequest& request, const std::string& field,
+    const std::vector<entity_resolution::EntityCandidate>& candidates,
+    bool& invalid_answer) {
+    invalid_answer = false;
+    const auto answer_entry = request.context.find("clarification." + field);
+    if (answer_entry == request.context.end()) return std::nullopt;
+
+    const auto answer = lower(answer_entry->second);
+    if (answer.empty()) {
+        invalid_answer = true;
+        return std::nullopt;
+    }
+
+    std::vector<const entity_resolution::EntityCandidate*> exact_matches;
+    for (const auto& candidate : candidates) {
+        if (lower(candidate.id) == answer || lower(candidate.name) == answer ||
+            lower(candidate.location) == answer) {
+            exact_matches.push_back(&candidate);
+        }
+    }
+    if (exact_matches.size() == 1) return *exact_matches.front();
+    if (exact_matches.size() > 1) {
+        invalid_answer = true;
+        return std::nullopt;
+    }
+
+    std::size_t index = 0;
+    const auto parsed = std::from_chars(
+        answer.data(), answer.data() + answer.size(), index);
+    if (parsed.ec == std::errc{} && parsed.ptr == answer.data() + answer.size() &&
+        index > 0 && index <= candidates.size()) {
+        return candidates[index - 1];
+    }
+
+    invalid_answer = true;
+    return std::nullopt;
 }
 std::vector<std::string> split_instruction_chain(const std::string& input) {
     const auto lowered = lower(input);
@@ -459,9 +521,14 @@ SubsystemResult CommandSubsystem::open_target(
 
         const auto folder_match = entity_resolver_.resolve(std::move(folder_request));
         if (folder_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-            return needs_choice(request.request_id, "folder");
-        }
-        if (folder_match.status == entity_resolution::ResolutionStatus::Found) {
+            bool invalid_answer = false;
+            selected_folder = choose_candidate(
+                request, "folder choice", folder_match.candidates, invalid_answer);
+            if (!selected_folder) {
+                return needs_choice(request.request_id, "folder",
+                                    folder_match.candidates, invalid_answer);
+            }
+        } else if (folder_match.status == entity_resolution::ResolutionStatus::Found) {
             selected_folder = folder_match.selected;
         } else {
             std::string app_error;
@@ -477,9 +544,15 @@ SubsystemResult CommandSubsystem::open_target(
             }
             const auto app_match = entity_resolver_.resolve(std::move(app_request));
             if (app_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-                return needs_choice(request.request_id, "application");
-            }
-            if (app_match.status == entity_resolution::ResolutionStatus::Found) {
+                bool invalid_answer = false;
+                const auto choice = choose_candidate(
+                    request, "application choice", app_match.candidates, invalid_answer);
+                if (!choice) {
+                    return needs_choice(request.request_id, "application",
+                                        app_match.candidates, invalid_answer);
+                }
+                selected_app = platform_.applications().find(choice->id);
+            } else if (app_match.status == entity_resolution::ResolutionStatus::Found) {
                 selected_app = platform_.applications().find(app_match.selected.id);
             }
         }
@@ -759,14 +832,23 @@ SubsystemResult CommandSubsystem::modify_path(
     }
 
     const auto source_match = entity_resolver_.resolve(std::move(source_request));
+    entity_resolution::EntityCandidate selected_source;
     if (source_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-        return needs_choice(request.request_id, "source");
-    }
-    if (source_match.status != entity_resolution::ResolutionStatus::Found) {
+        bool invalid_answer = false;
+        const auto choice = choose_candidate(
+            request, "source choice", source_match.candidates, invalid_answer);
+        if (!choice) {
+            return needs_choice(request.request_id, "source",
+                                source_match.candidates, invalid_answer);
+        }
+        selected_source = *choice;
+    } else if (source_match.status == entity_resolution::ResolutionStatus::Found) {
+        selected_source = source_match.selected;
+    } else {
         return failure(request.request_id, "The source file or folder could not be found.");
     }
 
-    const auto source_path = std::filesystem::path(source_match.selected.id);
+    const auto source_path = std::filesystem::path(selected_source.id);
     std::filesystem::path destination_path;
     std::string capability_id;
     std::string execution_operation;
@@ -943,14 +1025,23 @@ SubsystemResult CommandSubsystem::delete_target(
     }
 
     const auto match = entity_resolver_.resolve(std::move(source_request));
+    entity_resolution::EntityCandidate selected_target;
     if (match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-        return needs_choice(request.request_id, "delete target");
-    }
-    if (match.status != entity_resolution::ResolutionStatus::Found) {
+        bool invalid_answer = false;
+        const auto choice = choose_candidate(
+            request, "delete target choice", match.candidates, invalid_answer);
+        if (!choice) {
+            return needs_choice(request.request_id, "delete target",
+                                match.candidates, invalid_answer);
+        }
+        selected_target = *choice;
+    } else if (match.status == entity_resolution::ResolutionStatus::Found) {
+        selected_target = match.selected;
+    } else {
         return failure(request.request_id, "The file or folder to delete could not be found.");
     }
 
-    const auto path = match.selected.id;
+    const auto path = selected_target.id;
     permissions::PermissionRequest permission_request;
     permission_request.capability_id = "filesystem.delete";
     permission_request.operation = "delete_path";
@@ -1085,14 +1176,23 @@ SubsystemResult CommandSubsystem::count_file(
     }
 
     const auto match = entity_resolver_.resolve(std::move(file_request));
+    entity_resolution::EntityCandidate selected_file;
     if (match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-        return needs_choice(request.request_id, "file");
-    }
-    if (match.status != entity_resolution::ResolutionStatus::Found) {
+        bool invalid_answer = false;
+        const auto choice = choose_candidate(
+            request, "file choice", match.candidates, invalid_answer);
+        if (!choice) {
+            return needs_choice(request.request_id, "file",
+                                match.candidates, invalid_answer);
+        }
+        selected_file = *choice;
+    } else if (match.status == entity_resolution::ResolutionStatus::Found) {
+        selected_file = match.selected;
+    } else {
         return failure(request.request_id, "The text file could not be found.");
     }
 
-    const auto path = match.selected.id;
+    const auto path = selected_file.id;
     permissions::PermissionRequest permission_request;
     permission_request.capability_id = "filesystem.read_text";
     permission_request.operation = "read_text";

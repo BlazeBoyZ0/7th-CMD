@@ -171,23 +171,67 @@ int main(int argc, char* argv[]) {
 
         auto outcome = orchestrator.execute(
             "command", {{"raw_input", input}});
-        if (outcome.result.status == seventh::SubsystemStatus::NeedsPermission &&
-            outcome.result.result_data.contains("confirmation_action") &&
-            outcome.result.result_data.at("confirmation_action") == "delete") {
-            std::cout << "Confirm deletion of "
-                      << outcome.result.result_data.at("path")
-                      << "? Type yes to continue, anything else to cancel: " << std::flush;
-            const auto confirmation = input_handler.read_line();
-            if (confirmation != "yes" && confirmation != "YES" && confirmation != "Yes") {
-                if (!orchestrator.cancel(outcome.task_id)) {
-                    logger.write(seventh::utilities::LogLevel::Warning,
-                                 "The pending deletion task could not be cancelled.");
+        bool exit_requested = false;
+        while (true) {
+            if (outcome.result.status == seventh::SubsystemStatus::NeedsInformation) {
+                bool cancelled = false;
+                while (const auto question = orchestrator.next_question(outcome.task_id)) {
+                    const auto options = outcome.result.result_data.find("choice_options");
+                    if (options != outcome.result.result_data.end() &&
+                        !options->second.empty()) {
+                        std::cout << "Candidates:\\n" << options->second << '\\n';
+                    } else if (!outcome.result.error.empty()) {
+                        std::cout << outcome.result.error << '\\n';
+                    }
+
+                    std::cout << question->question << " (or 'cancel'): " << std::flush;
+                    const auto answer = input_handler.read_line();
+                    if (answer.empty() || answer == "cancel" || answer == "CANCEL" ||
+                        answer == "Cancel") {
+                        orchestrator.cancel(outcome.task_id);
+                        outcome.state = orchestrator.state_of(outcome.task_id);
+                        outcome.result.error = "The task was cancelled while waiting for clarification.";
+                        cancelled = true;
+                        break;
+                    }
+                    if (answer == "exit" || answer == "EXIT" || answer == "Exit") {
+                        orchestrator.cancel(outcome.task_id);
+                        outcome.state = orchestrator.state_of(outcome.task_id);
+                        outcome.result.error = "The task was cancelled while waiting for clarification.";
+                        cancelled = true;
+                        exit_requested = true;
+                        break;
+                    }
+                    if (!orchestrator.resolve_question(
+                            outcome.task_id, question->required_field, answer)) {
+                        std::cout << "That answer could not be applied. Try again.\\n";
+                    }
                 }
-                std::cout << "Deletion cancelled.\n";
+                if (cancelled) break;
+                outcome = orchestrator.continue_task(outcome.task_id);
                 continue;
             }
-            outcome = orchestrator.continue_task(outcome.task_id, true);
+
+            if (outcome.result.status == seventh::SubsystemStatus::NeedsPermission &&
+                outcome.result.result_data.contains("confirmation_action") &&
+                outcome.result.result_data.at("confirmation_action") == "delete") {
+                std::cout << "Confirm deletion of "
+                          << outcome.result.result_data.at("path")
+                          << "? Type yes to continue, anything else to cancel: " << std::flush;
+                const auto confirmation = input_handler.read_line();
+                if (confirmation != "yes" && confirmation != "YES" &&
+                    confirmation != "Yes") {
+                    orchestrator.cancel(outcome.task_id);
+                    outcome.state = orchestrator.state_of(outcome.task_id);
+                    outcome.result.error = "Deletion cancelled.";
+                    break;
+                }
+                outcome = orchestrator.continue_task(outcome.task_id, true);
+                continue;
+            }
+            break;
         }
+        if (exit_requested) break;
 
         seventh::response::ResponseData response;
         response.task_id = outcome.task_id;
