@@ -12,6 +12,7 @@
 #include "seventh/systems/knowledge/context_manager.hpp"
 #include "seventh/systems/knowledge/knowledge_system.hpp"
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,9 +39,12 @@ public:
     [[nodiscard]] bool cancel(const TaskId& task_id);
     [[nodiscard]] bool resume(const TaskId& task_id,
                               bool permission_granted = false);
+    [[nodiscard]] TaskOutcome continue_task(
+        const TaskId& task_id, bool permission_granted = false);
     [[nodiscard]] std::optional<knowledge::ClarificationRequest> next_question(
         const TaskId& task_id) const;
-    bool resolve_question(const TaskId& task_id, const std::string& field);
+    bool resolve_question(const TaskId& task_id, const std::string& field,
+                          const std::string& answer);
 
     [[nodiscard]] knowledge::KnowledgeSystem& knowledge() noexcept;
     [[nodiscard]] const knowledge::KnowledgeSystem& knowledge() const noexcept;
@@ -49,6 +53,11 @@ public:
     bool clear_context(const TaskId& task_id);
 
 private:
+    struct PendingTask {
+        SubsystemRequest request;
+        std::shared_ptr<Subsystem> subsystem;
+    };
+
     void record_context(const TaskOutcome& outcome);
     std::vector<std::shared_ptr<Subsystem>> subsystems_;
     RequestManager request_manager_;
@@ -62,6 +71,7 @@ private:
     PauseResumeManager pause_resume_;
     knowledge::KnowledgeSystem knowledge_;
     knowledge::ContextManager contexts_;
+    std::map<TaskId, PendingTask> pending_tasks_;
 };
 
 } // namespace seventh

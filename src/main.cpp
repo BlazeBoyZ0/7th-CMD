@@ -91,13 +91,12 @@ int main(int argc, char* argv[]) {
                       << outcome.result.result_data.at("path")
                       << "? Type yes to continue, anything else to cancel: " << std::flush;
             const auto confirmation = input_handler.read_line();
-            orchestrator.cancel(outcome.task_id);
             if (confirmation != "yes" && confirmation != "YES" && confirmation != "Yes") {
+                orchestrator.cancel(outcome.task_id);
                 std::cout << "Deletion cancelled.\n";
                 continue;
             }
-            outcome = orchestrator.execute(
-                "command", {{"raw_input", input}, {"confirmed", "yes"}});
+            outcome = orchestrator.continue_task(outcome.task_id, true);
         }
 
         seventh::response::ResponseData response;
