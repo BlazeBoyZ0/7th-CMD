@@ -77,25 +77,61 @@ bool CapabilityRegistry::load_from_file(const std::string& path,
         };
 
         const auto* id_value = get("id");
-        const auto* operations_value = get("operations");
-        const auto* enabled_value = get("enabled");
-        const auto* read_only_value = get("read_only");
         const auto* id = id_value ? id_value->as_string() : nullptr;
-        const auto* operations = operations_value ? operations_value->as_array() : nullptr;
-        const auto* enabled = enabled_value ? enabled_value->as_bool() : nullptr;
-        const auto* read_only = read_only_value ? read_only_value->as_bool() : nullptr;
-
-        if (!id || id->empty() || !operations || operations->empty() ||
-            !enabled || !read_only || !identifiers.insert(*id).second) {
+        if (!id || id->empty() || !identifiers.insert(*id).second) {
             error = "Capability entry " + std::to_string(index) +
-                    " has missing, invalid, or duplicate required fields.";
+                    " has a missing, invalid, or duplicate ID.";
             return false;
         }
 
+        const auto existing = find(*id);
         CapabilityDefinition definition;
+        if (existing) definition = *existing;
         definition.id = *id;
-        definition.enabled = *enabled;
-        definition.read_only = *read_only;
+
+        if (const auto* operations_value = get("operations")) {
+            const auto* operations = operations_value->as_array();
+            if (!operations || operations->empty()) {
+                error = "Capability operations must be a non-empty array.";
+                return false;
+            }
+            definition.operations.clear();
+            for (const auto& operation_value : *operations) {
+                const auto* operation = operation_value.as_string();
+                if (!operation || operation->empty()) {
+                    error = "Capability operations must be non-empty strings.";
+                    return false;
+                }
+                definition.operations.push_back(*operation);
+            }
+        } else if (!existing) {
+            error = "A new capability requires an operations array.";
+            return false;
+        }
+
+        if (const auto* enabled_value = get("enabled")) {
+            const auto* enabled = enabled_value->as_bool();
+            if (!enabled) {
+                error = "Capability enabled must be a boolean.";
+                return false;
+            }
+            definition.enabled = *enabled;
+        } else if (!existing) {
+            error = "A new capability requires an enabled value.";
+            return false;
+        }
+
+        if (const auto* read_only_value = get("read_only")) {
+            const auto* read_only = read_only_value->as_bool();
+            if (!read_only) {
+                error = "Capability read_only must be a boolean.";
+                return false;
+            }
+            definition.read_only = *read_only;
+        } else if (!existing) {
+            error = "A new capability requires a read_only value.";
+            return false;
+        }
 
         if (const auto* description_value = get("description")) {
             const auto* description = description_value->as_string();
@@ -106,21 +142,13 @@ bool CapabilityRegistry::load_from_file(const std::string& path,
             definition.description = *description;
         }
 
-        for (const auto& operation_value : *operations) {
-            const auto* operation = operation_value.as_string();
-            if (!operation || operation->empty()) {
-                error = "Capability operations must be non-empty strings.";
-                return false;
-            }
-            definition.operations.push_back(*operation);
-        }
-
         if (const auto* roots_value = get("allowed_roots")) {
             const auto* roots = roots_value->as_array();
             if (!roots) {
                 error = "Capability allowed_roots must be an array.";
                 return false;
             }
+            definition.allowed_roots.clear();
             for (const auto& root_value : *roots) {
                 const auto* allowed_root = root_value.as_string();
                 if (!allowed_root || allowed_root->empty()) {
