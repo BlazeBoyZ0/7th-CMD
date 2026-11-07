@@ -13,7 +13,10 @@ struct DataRequest {
     std::string operation;
     std::string field;
     std::string value;
+    std::string second_value;
+    std::vector<std::string> fields;
     std::string text_input;
+    bool descending{false};
 };
 
 struct DataResult {
