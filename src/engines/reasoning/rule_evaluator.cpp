@@ -49,7 +49,7 @@ TruthValue evaluate_condition(const RuleCondition& condition,
 }
 
 struct ConditionSupport {
-    unsigned confidence{100};
+    unsigned confidence{0};
     std::uint64_t latest_observation{0};
     bool found{false};
 };
