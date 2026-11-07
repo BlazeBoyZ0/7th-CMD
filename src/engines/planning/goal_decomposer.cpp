@@ -2,6 +2,8 @@
 
 #include "seventh/core/identifiers.hpp"
 
+#include <utility>
+
 namespace seventh::planning {
 
 Plan GoalDecomposer::decompose(const PlanningRequest& request) const {
@@ -12,7 +14,7 @@ Plan GoalDecomposer::decompose(const PlanningRequest& request) const {
 
     for (const auto& draft : request.tasks) {
         PlanTask task;
-        task.id = make_identifier("step");
+        task.id = draft.id.empty() ? make_identifier("step") : draft.id;
         task.operation = draft.operation;
         task.input_data = draft.input_data;
         task.dependencies = draft.dependencies;

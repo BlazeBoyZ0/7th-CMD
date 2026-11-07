@@ -9,6 +9,7 @@
 namespace seventh::planning {
 
 struct TaskDraft {
+    std::string id;
     std::string operation;
     std::map<std::string, std::string> input_data;
     StringList dependencies;

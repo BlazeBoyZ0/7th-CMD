@@ -1,5 +1,6 @@
 #include "seventh/engines/planning/dependency_analyzer.hpp"
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <set>
