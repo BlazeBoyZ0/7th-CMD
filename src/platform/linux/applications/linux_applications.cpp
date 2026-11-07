@@ -58,6 +58,48 @@ void scan_directory(const fs::path& directory,
     }
 }
 
+std::optional<std::string> default_desktop_id(const std::string& role) {
+    if (role != "browser") return std::nullopt;
+    std::vector<fs::path> files;
+    if (const char* home = std::getenv("HOME")) {
+        files.emplace_back(fs::path(home) / ".config/mimeapps.list");
+        files.emplace_back(fs::path(home) / ".local/share/applications/mimeapps.list");
+    }
+    files.emplace_back("/usr/local/share/applications/mimeapps.list");
+    files.emplace_back("/usr/share/applications/mimeapps.list");
+    files.emplace_back("/usr/share/applications/defaults.list");
+
+    constexpr const char* keys[] = {
+        "x-scheme-handler/http",
+        "x-scheme-handler/https",
+        "text/html"
+    };
+    for (const auto& file : files) {
+        std::ifstream input(file);
+        if (!input) continue;
+        bool in_defaults = false;
+        std::string line;
+        while (std::getline(input, line)) {
+            line = trim(line);
+            if (line.empty() || line.front() == '#') continue;
+            if (line.front() == '[') {
+                in_defaults = line == "[Default Applications]";
+                continue;
+            }
+            if (!in_defaults) continue;
+            for (const auto* key : keys) {
+                const std::string prefix = std::string(key) + "=";
+                if (!line.starts_with(prefix)) continue;
+                auto value = line.substr(prefix.size());
+                const auto separator = value.find(';');
+                if (separator != std::string::npos) value.resize(separator);
+                if (!value.empty()) return value;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 std::vector<ApplicationEntry> LinuxApplications::list(std::string& error) const {
@@ -82,6 +124,12 @@ std::optional<ApplicationEntry> LinuxApplications::find(
         if (lower(app.name) == wanted || lower(app.id) == wanted) return app;
     }
     return std::nullopt;
+}
+
+std::optional<ApplicationEntry> LinuxApplications::find_default(
+    const std::string& role) const {
+    const auto id = default_desktop_id(role);
+    return id ? find(*id) : std::nullopt;
 }
 
 PlatformResult LinuxApplications::launch(const ApplicationEntry& application) {

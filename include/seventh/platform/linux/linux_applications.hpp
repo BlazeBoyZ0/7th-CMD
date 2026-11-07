@@ -10,6 +10,8 @@ public:
         std::string& error) const override;
     [[nodiscard]] std::optional<ApplicationEntry> find(
         const std::string& name) const override;
+    [[nodiscard]] std::optional<ApplicationEntry> find_default(
+        const std::string& role) const override;
     [[nodiscard]] PlatformResult launch(
         const ApplicationEntry& application) override;
 };

@@ -15,6 +15,8 @@ public:
         std::string& error) const = 0;
     [[nodiscard]] virtual std::optional<ApplicationEntry> find(
         const std::string& name) const = 0;
+    [[nodiscard]] virtual std::optional<ApplicationEntry> find_default(
+        const std::string& role) const = 0;
     [[nodiscard]] virtual PlatformResult launch(
         const ApplicationEntry& application) = 0;
 };
