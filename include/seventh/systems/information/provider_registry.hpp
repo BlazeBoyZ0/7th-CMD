@@ -13,8 +13,9 @@ public:
     virtual ~DataProvider() = default;
     [[nodiscard]] virtual std::string_view id() const noexcept = 0;
     [[nodiscard]] virtual bool supports(const DataRequest& request) const = 0;
-    [[nodiscard]] virtual std::vector<DataRecord> acquire(
-        const DataRequest& request) = 0;
+    [[nodiscard]] virtual bool acquire(
+        const DataRequest& request, std::vector<DataRecord>& records,
+        std::string& error) = 0;
 };
 
 class ProviderRegistry {

@@ -69,6 +69,7 @@ add_executable(7thcmd
     src/systems/information/information_processor.cpp
     src/systems/information/operation_engine.cpp
     src/systems/information/provider_registry.cpp
+    src/systems/information/platform_data_providers.cpp
     src/systems/information/result_builder.cpp
     src/systems/information/type_system.cpp
     src/systems/entity_resolution/ambiguity_detector.cpp

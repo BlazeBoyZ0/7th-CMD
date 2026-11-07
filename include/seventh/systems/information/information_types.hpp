@@ -10,6 +10,7 @@ using DataRecord = std::map<std::string, std::string>;
 
 struct DataRequest {
     std::string provider_id;
+    std::string source_path;
     std::string operation;
     std::string field;
     std::string value;
