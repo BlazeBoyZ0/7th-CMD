@@ -177,15 +177,14 @@ std::string CommandSubsystem::resolve_destination(
     const char* home = std::getenv("HOME");
     if (!home || destination.empty()) return {};
 
-    const auto remembered = session_paths_.find(destination);
-    if (remembered != session_paths_.end()) return remembered->second;
-
     const std::filesystem::path requested(destination);
     if (requested.is_absolute()) return requested.lexically_normal().string();
     if (lower(destination) == "home") return std::filesystem::path(home).string();
     if (lower(destination) == "desktop") {
         return (std::filesystem::path(home) / "Desktop").string();
     }
+    const auto remembered = session_paths_.find(lower(destination));
+    if (remembered != session_paths_.end()) return remembered->second;
     return (std::filesystem::path(home) / requested).lexically_normal().string();
 }
 
@@ -319,7 +318,7 @@ SubsystemResult CommandSubsystem::create_folder(
     result.result_data["destination"] = destination_path;
     result.result_data["path"] = target_path;
     result.result_data["verified"] = "true";
-    session_paths_[intent.name] = target_path;
+    session_paths_[lower(intent.name)] = target_path;
     return result;
 }
 
@@ -1056,14 +1055,14 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         if (intent.destination.empty()) {
             return failure(request.request_id, "Every folder-creation step needs a destination.");
         }
-        if (local_paths.contains(intent.name)) {
+        if (local_paths.contains(lower(intent.name))) {
             return failure(request.request_id,
                 "A folder name is repeated in the same sequence; use distinct names.");
         }
 
         std::string destination;
         bool planned_destination = false;
-        const auto local = local_paths.find(intent.destination);
+        const auto local = local_paths.find(lower(intent.destination));
         if (local != local_paths.end()) {
             destination = local->second;
             planned_destination = true;
@@ -1128,7 +1127,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         if (index > 0) draft.dependencies.push_back("folder-step-" + std::to_string(index));
         planning_request.tasks.push_back(std::move(draft));
 
-        local_paths[intent.name] = target;
+        local_paths[lower(intent.name)] = target;
         target_paths.push_back(target);
         folder_names.push_back(intent.name);
     }
@@ -1175,7 +1174,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         }
 
         plan_state_manager_.complete(plan, task.id);
-        session_paths_[folder_names[index]] = target_paths[index];
+        session_paths_[lower(folder_names[index])] = target_paths[index];
         ++completed;
     }
 
