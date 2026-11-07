@@ -33,12 +33,32 @@ bool LinuxOperationExecutor::supports(
            request.operation == "open_path" ||
            request.operation == "search_files" ||
            request.operation == "rename_path" ||
-           request.operation == "copy_file";
+           request.operation == "copy_file" ||
+           request.operation == "delete_path";
 }
 
 execution::ExecutionResult LinuxOperationExecutor::execute(
     const execution::ExecutionRequest& request) {
     execution::ExecutionResult result;
+    if (request.operation == "delete_path") {
+        const auto path = request.input_data.find("path");
+        if (path == request.input_data.end() || path->second.empty()) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "delete_path requires a target path.";
+            return result;
+        }
+        const auto removed = platform_.filesystem().remove(path->second);
+        if (!removed.success) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = removed.error;
+            return result;
+        }
+        result.status = execution::ExecutionStatus::Success;
+        result.output_data["path"] = path->second;
+        result.output_data["deleted"] = "true";
+        return result;
+    }
+
     if (request.operation == "rename_path" || request.operation == "copy_file") {
         const auto source = request.input_data.find("source");
         const auto destination = request.input_data.find("destination");

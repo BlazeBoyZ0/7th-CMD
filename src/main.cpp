@@ -70,8 +70,23 @@ int main(int argc, char* argv[]) {
         if (input.empty()) break;
         if (input == "exit" || input == "quit") break;
 
-        const auto outcome = orchestrator.execute(
+        auto outcome = orchestrator.execute(
             "command", {{"raw_input", input}});
+        if (outcome.result.status == seventh::SubsystemStatus::NeedsPermission &&
+            outcome.result.result_data.contains("confirmation_action") &&
+            outcome.result.result_data.at("confirmation_action") == "delete") {
+            std::cout << "Confirm deletion of "
+                      << outcome.result.result_data.at("path")
+                      << "? Type yes to continue, anything else to cancel: " << std::flush;
+            const auto confirmation = input_handler.read_line();
+            orchestrator.cancel(outcome.task_id);
+            if (confirmation != "yes" && confirmation != "YES" && confirmation != "Yes") {
+                std::cout << "Deletion cancelled.\n";
+                continue;
+            }
+            outcome = orchestrator.execute(
+                "command", {{"raw_input", input}, {"confirmed", "yes"}});
+        }
 
         seventh::response::ResponseData response;
         response.task_id = outcome.task_id;
