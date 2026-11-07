@@ -12,6 +12,7 @@
 #include "seventh/systems/entity_resolution/entity_resolver.hpp"
 #include "seventh/systems/knowledge/context_manager.hpp"
 #include "seventh/systems/permissions/permission_manager.hpp"
+#include "seventh/systems/information/provider_registry.hpp"
 #include "seventh/systems/verification/verification_system.hpp"
 
 #include <vector>
@@ -59,6 +60,7 @@ private:
     permissions::PermissionManager permission_manager_;
     execution::ExecutionEngine execution_engine_;
     verification::VerificationSystem verification_system_;
+    information::ProviderRegistry information_registry_;
     knowledge::ContextManager context_manager_;
 };
 

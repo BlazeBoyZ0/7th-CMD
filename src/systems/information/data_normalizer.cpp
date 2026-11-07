@@ -18,7 +18,7 @@ void DataNormalizer::normalize(std::vector<DataRecord>& records) const {
     for (auto& record : records) {
         DataRecord normalized;
         for (auto& [key, value] : record) {
-            normalized[trim(key)] = trim(value);
+            normalized[trim(key)] = value;
         }
         record = std::move(normalized);
     }

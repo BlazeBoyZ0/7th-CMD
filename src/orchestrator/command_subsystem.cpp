@@ -5,6 +5,7 @@
 #include "seventh/systems/permissions/permission_types.hpp"
 #include "seventh/systems/verification/verification_types.hpp"
 #include "seventh/systems/information/information_processor.hpp"
+#include "seventh/systems/information/platform_data_providers.hpp"
 #include "seventh/systems/information/provider_registry.hpp"
 
 #include <cctype>
@@ -162,6 +163,7 @@ CommandSubsystem::CommandSubsystem(
 
     execution_engine_.register_executor(
         std::make_shared<platform::linux_backend::LinuxOperationExecutor>(platform_));
+    information::register_platform_data_providers(information_registry_, platform_);
 }
 
 bool CommandSubsystem::load_capabilities(const std::string& path,
@@ -607,24 +609,47 @@ SubsystemResult CommandSubsystem::search_items(
         return failure(request.request_id, "The search task could not enter the running state.");
     }
 
-    execution::ExecutionRequest execution_request;
-    execution_request.task_id = request.task_id;
-    execution_request.operation = "search_files";
-    execution_request.input_data = plan.tasks.front().input_data;
-    execution_request.requires_authorization = true;
-    execution_request.authorization_granted = true;
-    const auto executed = execution_engine_.execute(execution_request);
-    if (executed.status != execution::ExecutionStatus::Success) {
+    information::InformationProcessor processor(information_registry_);
+    information::DataRequest data_request;
+    data_request.provider_id = "filesystem";
+    data_request.source_path = directory;
+    data_request.operation = "find";
+    data_request.field = "name";
+    data_request.value = intent.query;
+    const auto search = processor.process(data_request);
+    if (!search.success) {
         plan_state_manager_.fail(plan, plan.tasks.front().id);
-        return failure(request.request_id, executed.error);
+        return failure(request.request_id, search.error);
     }
-    plan_state_manager_.complete(plan, plan.tasks.front().id);
+
+    constexpr std::size_t max_displayed_matches = 50;
+    std::string matches;
+    std::size_t count = 0;
+    std::size_t displayed = 0;
+    for (const auto& record : search.records) {
+        const auto name = record.find("name");
+        const auto path = record.find("path");
+        const auto type = record.find("type");
+        if (name == record.end() || path == record.end() || type == record.end()) continue;
+        if (intent.entity_type == "file" && type->second != "file") continue;
+        if (intent.entity_type == "folder" && type->second != "folder") continue;
+
+        ++count;
+        if (displayed >= max_displayed_matches) continue;
+        if (displayed != 0) matches += '\n';
+        matches += name->second + " | " + path->second;
+        ++displayed;
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The search plan could not be marked complete.");
+    }
 
     verification::VerificationRequest verification_request;
     verification_request.operation = "search_files";
-    verification_request.expected["directory"] = directory;
-    verification_request.actual["directory"] = executed.output_data.contains("directory")
-        ? executed.output_data.at("directory") : "";
+    verification_request.expected["exists"] = "true";
+    verification_request.actual["exists"] =
+        std::filesystem::is_directory(directory, ec) && !ec ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
         return failure(request.request_id, "The search result could not be verified.");
     }
@@ -636,10 +661,10 @@ SubsystemResult CommandSubsystem::search_items(
     result.result_data["entity_type"] = intent.entity_type;
     result.result_data["directory"] = directory;
     result.result_data["query"] = intent.query;
-    result.result_data["count"] = executed.output_data.contains("count")
-        ? executed.output_data.at("count") : "0";
-    result.result_data["matches"] = executed.output_data.contains("matches")
-        ? executed.output_data.at("matches") : "";
+    result.result_data["count"] = std::to_string(count);
+    result.result_data["displayed"] = std::to_string(displayed);
+    result.result_data["truncated"] = count > displayed ? "true" : "false";
+    result.result_data["matches"] = std::move(matches);
     return result;
 }
 
@@ -1072,8 +1097,7 @@ SubsystemResult CommandSubsystem::count_file(
         return failure(request.request_id, "The selected file appears to contain binary data.");
     }
 
-    information::ProviderRegistry registry;
-    information::InformationProcessor processor(registry);
+    information::InformationProcessor processor(information_registry_);
     information::DataRequest data_request;
     data_request.operation = operation;
     data_request.text_input = text_value->second;
