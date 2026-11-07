@@ -1,3 +1,4 @@
+#include "seventh/engines/grammar/grammar_engine.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
 #include "seventh/engines/reasoning/rule_evaluator.hpp"
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
@@ -20,6 +21,37 @@ void expect(bool condition, const std::string& description) {
         std::cerr << "[FAIL] " << description << '\n';
         ++failures;
     }
+}
+
+void test_grammar_interpretation() {
+    using seventh::grammar::GrammarEngine;
+    const GrammarEngine grammar;
+
+    const auto create = grammar.interpret("Create a folder named Projects on Desktop");
+    expect(create.valid, "the grammar accepts a folder creation instruction");
+    expect(create.operation == "create" && create.entity_type == "folder",
+           "the grammar identifies the create-folder operation");
+    expect(create.name == "Projects" && create.destination == "Desktop",
+           "the grammar preserves folder name case and destination");
+
+    const auto open = grammar.interpret("open browser");
+    expect(open.valid && open.operation == "open" &&
+               open.entity_type == "application" && open.name == "browser",
+           "the grammar recognizes the default-browser instruction");
+
+    const auto rename = grammar.interpret("rename file main.cpp to test.cpp");
+    expect(rename.valid && rename.operation == "rename" &&
+               rename.source == "main.cpp" && rename.destination == "test.cpp",
+           "the grammar extracts rename source and destination");
+
+    const auto search = grammar.interpret("search files named report in Documents");
+    expect(search.valid && search.operation == "search" &&
+               search.query == "report" && search.destination == "Documents",
+           "the grammar extracts a search query and location");
+
+    const auto incomplete = grammar.interpret("create a folder");
+    expect(!incomplete.valid && !incomplete.missing_information.empty(),
+           "incomplete instructions request missing information");
 }
 
 void test_three_valued_logic() {
@@ -177,6 +209,7 @@ void test_permission_boundaries() {
 } // namespace
 
 int main() {
+    test_grammar_interpretation();
     test_three_valued_logic();
     test_rule_inference();
     test_planning_dependencies();
@@ -187,6 +220,6 @@ int main() {
         return EXIT_FAILURE;
     }
 
-    std::cout << "All core engine and permission tests passed.\n";
+    std::cout << "All grammar, engine, and permission tests passed.\n";
     return EXIT_SUCCESS;
 }

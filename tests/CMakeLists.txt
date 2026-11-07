@@ -1,5 +1,13 @@
 add_executable(7thcmd_tests
     test_core_engines.cpp
+    ../src/engines/grammar/ast_generator.cpp
+    ../src/engines/grammar/cir_generator.cpp
+    ../src/engines/grammar/grammar_engine.cpp
+    ../src/engines/grammar/grammar_parser.cpp
+    ../src/engines/grammar/input_processor.cpp
+    ../src/engines/grammar/normalizer.cpp
+    ../src/engines/grammar/semantic_analyzer.cpp
+    ../src/engines/grammar/tokenizer.cpp
     ../src/engines/reasoning/truth_evaluator.cpp
     ../src/engines/reasoning/rule_evaluator.cpp
     ../src/engines/planning/dependency_analyzer.cpp
