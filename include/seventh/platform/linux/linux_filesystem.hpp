@@ -2,7 +2,7 @@
 
 #include "seventh/platform/filesystem/filesystem_interface.hpp"
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 
 class LinuxFilesystem final : public FilesystemInterface {
 public:
@@ -19,4 +19,4 @@ public:
     [[nodiscard]] PlatformResult remove(const std::string& path) override;
 };
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

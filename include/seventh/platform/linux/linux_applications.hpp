@@ -2,7 +2,7 @@
 
 #include "seventh/platform/applications/application_interface.hpp"
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 
 class LinuxApplications final : public ApplicationInterface {
 public:
@@ -14,4 +14,4 @@ public:
         const ApplicationEntry& application) override;
 };
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

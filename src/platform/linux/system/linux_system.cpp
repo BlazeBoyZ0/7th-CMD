@@ -1,9 +1,10 @@
 #include "seventh/platform/linux/linux_system.hpp"
 
 #include <fstream>
+#include <string>
 #include <sys/utsname.h>
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 
 SystemInformation LinuxSystem::information(std::string& error) const {
     SystemInformation info;
@@ -33,4 +34,4 @@ SystemInformation LinuxSystem::information(std::string& error) const {
     return info;
 }
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

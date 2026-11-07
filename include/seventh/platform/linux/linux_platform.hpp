@@ -6,7 +6,7 @@
 #include "seventh/platform/linux/linux_processes.hpp"
 #include "seventh/platform/linux/linux_system.hpp"
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 
 class LinuxPlatform final : public PlatformInterface {
 public:
@@ -23,4 +23,4 @@ private:
     LinuxSystem system_;
 };
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

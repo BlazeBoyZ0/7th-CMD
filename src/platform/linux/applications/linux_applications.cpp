@@ -7,11 +7,12 @@
 #include <fstream>
 #include <spawn.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 extern char** environ;
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 namespace fs = std::filesystem;
 namespace {
 
@@ -100,4 +101,4 @@ PlatformResult LinuxApplications::launch(const ApplicationEntry& application) {
     return {true, {}};
 }
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

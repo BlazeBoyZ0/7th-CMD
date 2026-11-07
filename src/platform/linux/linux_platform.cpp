@@ -1,6 +1,6 @@
 #include "seventh/platform/linux/linux_platform.hpp"
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 
 const char* LinuxPlatform::id() const noexcept {
     return "linux";
@@ -22,4 +22,4 @@ SystemInterface& LinuxPlatform::system() noexcept {
     return system_;
 }
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

@@ -3,10 +3,13 @@
 #include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
+#include <utility>
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 namespace fs = std::filesystem;
 
 std::vector<ProcessEntry> LinuxProcesses::list(std::string& error) const {
@@ -36,16 +39,21 @@ std::vector<ProcessEntry> LinuxProcesses::list(std::string& error) const {
 }
 
 PlatformResult LinuxProcesses::terminate(std::uint64_t process_id) {
-    if (process_id <= 1 || process_id == static_cast<std::uint64_t>(::getpid())) {
-        return {false, "Refusing to terminate a protected process ID."};
+    if (process_id <= 1 || process_id == static_cast<std::uint64_t>(::getpid()) ||
+        process_id > static_cast<std::uint64_t>(std::numeric_limits<pid_t>::max())) {
+        return {false, "Refusing to terminate a protected or invalid process ID."};
     }
+
     const auto process_path = fs::path("/proc") / std::to_string(process_id);
-    struct stat_info { };
-    (void)process_path;
+    struct stat process_info {};
+    if (::stat(process_path.c_str(), &process_info) != 0 ||
+        process_info.st_uid != ::getuid()) {
+        return {false, "The process does not exist or is not owned by the current user."};
+    }
     if (::kill(static_cast<pid_t>(process_id), SIGTERM) != 0) {
         return {false, "Unable to send SIGTERM to the requested process."};
     }
     return {true, {}};
 }
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend

@@ -2,9 +2,10 @@
 
 #include <filesystem>
 #include <fstream>
-#include <limits>
+#include <iterator>
+#include <utility>
 
-namespace seventh::platform::linux {
+namespace seventh::platform::linux_backend {
 namespace fs = std::filesystem;
 namespace {
 
@@ -37,8 +38,9 @@ std::vector<FileEntry> LinuxFilesystem::list(
         error = ec.message();
         return entries;
     }
-
-    for (const auto& entry : iterator) {
+    const fs::directory_iterator end;
+    while (iterator != end) {
+        const auto& entry = *iterator;
         FileEntry item;
         item.name = entry.path().filename().string();
         item.path = entry.path().string();
@@ -52,6 +54,11 @@ std::vector<FileEntry> LinuxFilesystem::list(
             }
         }
         entries.push_back(std::move(item));
+        iterator.increment(ec);
+        if (ec) {
+            error = ec.message();
+            break;
+        }
     }
     return entries;
 }
@@ -89,6 +96,9 @@ PlatformResult LinuxFilesystem::create_directory(const std::string& path) {
     std::error_code ec;
     fs::create_directories(path, ec);
     if (ec) return failure(ec.message());
+    if (!fs::is_directory(path, ec) || ec) {
+        return failure(ec ? ec.message() : "The target exists but is not a directory.");
+    }
     return {true, {}};
 }
 
@@ -121,4 +131,4 @@ PlatformResult LinuxFilesystem::remove(const std::string& path) {
     return removed ? PlatformResult{true, {}} : failure("The target was not removed.");
 }
 
-} // namespace seventh::platform::linux
+} // namespace seventh::platform::linux_backend
