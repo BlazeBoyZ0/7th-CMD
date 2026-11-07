@@ -327,12 +327,13 @@ void CommandSubsystem::remember_folder(
 
 SubsystemResult CommandSubsystem::create_folder(
     const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
-    if (intent.destination.empty()) {
+    const auto destination_path = resolve_destination(intent.destination);
+    if (destination_path.empty()) {
         SubsystemResult result;
         result.request_id = request.request_id;
         result.status = SubsystemStatus::NeedsInformation;
         result.missing_information.emplace_back("destination folder");
-        result.error = "Specify where the new folder should be created.";
+        result.error = "Specify a destination folder or configure a default workspace.";
         return result;
     }
 
@@ -341,11 +342,6 @@ SubsystemResult CommandSubsystem::create_folder(
         folder_name.has_parent_path() || intent.name == "." || intent.name == "..") {
         return failure(request.request_id,
             "A folder name must be a single name, not a path.");
-    }
-
-    const auto destination_path = resolve_destination(intent.destination);
-    if (destination_path.empty()) {
-        return failure(request.request_id, "The user's home directory is unavailable.");
     }
 
     std::error_code fs_error;
@@ -438,19 +434,20 @@ SubsystemResult CommandSubsystem::create_folder(
         }
         return failure(request.request_id, executed.error);
     }
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id,
-            "Execution succeeded, but the plan state could not be marked complete.");
-    }
-
     verification::VerificationRequest verification_request;
     verification_request.operation = "create_directory";
     verification_request.expected["exists"] = "true";
     verification_request.actual["exists"] =
         platform_.filesystem().exists(target_path) ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id,
             "The operation ran, but verification could not confirm the new folder.");
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
     }
 
     SubsystemResult result;
@@ -703,8 +700,11 @@ SubsystemResult CommandSubsystem::search_items(
     const char* home = std::getenv("HOME");
     if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
 
+    const auto preferred_workspace = intent.destination.empty()
+        ? resolve_destination("") : std::string{};
     const auto directory = intent.destination.empty()
-        ? std::string(home) : resolve_destination(intent.destination);
+        ? (preferred_workspace.empty() ? std::string(home) : preferred_workspace)
+        : resolve_destination(intent.destination);
     if (directory.empty()) return failure(request.request_id, "The search directory could not be resolved.");
 
     std::error_code ec;
