@@ -102,7 +102,8 @@ int main(int argc, char* argv[]) {
         std::make_shared<seventh::grammar::GrammarSubsystem>(grammar_config));
 
     auto command_subsystem =
-        std::make_shared<seventh::CommandSubsystem>(platform, grammar_config);
+        std::make_shared<seventh::CommandSubsystem>(
+            platform, grammar_config, &orchestrator.knowledge());
     const std::vector<std::filesystem::path> packaged_capability_files{
         "config/capabilities.json",
         "/usr/local/share/7thcmd/config/capabilities.json",

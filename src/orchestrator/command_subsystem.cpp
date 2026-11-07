@@ -135,9 +135,10 @@ std::vector<std::string> split_instruction_chain(const std::string& input) {
 } // namespace
 
 CommandSubsystem::CommandSubsystem(
-    platform::PlatformInterface& platform, grammar::GrammarConfig grammar_config)
+    platform::PlatformInterface& platform, grammar::GrammarConfig grammar_config,
+    knowledge::KnowledgeSystem* knowledge)
     : platform_(platform), grammar_engine_(std::move(grammar_config)),
-      permission_manager_(capabilities_) {
+      permission_manager_(capabilities_), knowledge_(knowledge) {
     capabilities::CapabilityDefinition create_folder;
     create_folder.id = "filesystem.create_directory";
     create_folder.description = "Create a directory within the user's home directory.";
@@ -252,12 +253,46 @@ bool CommandSubsystem::can_handle(const SubsystemRequest& request) const {
 std::string CommandSubsystem::resolve_destination(
     const std::string& destination) const {
     const char* home = std::getenv("HOME");
-    if (!home || destination.empty()) return {};
+    if (!home) return {};
 
     const std::filesystem::path requested(destination);
-    if (requested.is_absolute()) return requested.lexically_normal().string();
-    if (lower(destination) == "home") return std::filesystem::path(home).string();
-    if (lower(destination) == "desktop") {
+    if (!destination.empty() && requested.is_absolute()) {
+        return requested.lexically_normal().string();
+    }
+
+    const auto normalized = lower(destination);
+    std::string preference_key;
+    if (normalized == "desktop") preference_key = "desktop_path";
+    else if (normalized == "documents") preference_key = "documents_path";
+    else if (normalized == "downloads") preference_key = "downloads_path";
+    else if (normalized == "pictures") preference_key = "pictures_path";
+    else if (normalized == "workspace") preference_key = "default_workspace";
+
+    if (knowledge_ && !preference_key.empty()) {
+        const auto preference = knowledge_->get(
+            knowledge::KnowledgeScope::UserPreference, preference_key);
+        if (preference && !preference->value.empty()) {
+            std::filesystem::path preferred(preference->value);
+            if (preferred.is_relative()) preferred = std::filesystem::path(home) / preferred;
+            return preferred.lexically_normal().string();
+        }
+    }
+
+    if (destination.empty()) {
+        if (knowledge_) {
+            const auto preference = knowledge_->get(
+                knowledge::KnowledgeScope::UserPreference, "default_workspace");
+            if (preference && !preference->value.empty()) {
+                std::filesystem::path preferred(preference->value);
+                if (preferred.is_relative()) preferred = std::filesystem::path(home) / preferred;
+                return preferred.lexically_normal().string();
+            }
+        }
+        return {};
+    }
+
+    if (normalized == "home") return std::filesystem::path(home).string();
+    if (normalized == "desktop") {
         return (std::filesystem::path(home) / "Desktop").string();
     }
     const auto* session = context_manager_.find("session");
