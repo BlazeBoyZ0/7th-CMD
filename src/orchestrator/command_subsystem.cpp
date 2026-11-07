@@ -1040,7 +1040,7 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         return count_file(request, intent);
     }
     return failure(request.request_id,
-        "The current end-to-end workflow supports folder creation, opening applications or folders, scoped directory searches, rename, move, file copy, and confirmed deletion of files or empty folders.");
+        "The current end-to-end workflow supports folder creation, opening applications or folders, scoped directory searches, rename, move, file copy, confirmed deletion of files or empty folders, and text-file counts.");
 }
 
 } // namespace seventh
