@@ -1,6 +1,7 @@
 #include "seventh/systems/information/platform_data_providers.hpp"
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -57,6 +58,10 @@ public:
                  std::string& error) override {
         auto text = platform_.filesystem().read_text(request.source_path, error);
         if (!text) return false;
+        if (text->find('\\0') != std::string::npos) {
+            error = "The document provider refuses binary file content.";
+            return false;
+        }
 
         records.clear();
         records.push_back({
