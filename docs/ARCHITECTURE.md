@@ -1,72 +1,104 @@
-# Architecture
+# 7th cmd — Architecture
 
-## Purpose
+## 1. System purpose
 
-7th cmd is a local, bounded command-intelligence system. It converts a user's request into a structured intent, resolves required entities and information, evaluates relevant facts and rules, plans operations, checks capabilities and permissions, executes approved actions, verifies outcomes, and communicates the result.
+7th cmd is a lightweight, local-first command intelligence system for operating a computer through natural-language instructions. It transforms a request into a structured intent, gathers the information needed to understand it, determines a valid plan, checks authorization, performs supported operations, verifies their effects, and communicates the outcome.
 
-It is not a general-purpose conversational model. It does not use an LLM, SLM, hosted inference API, or required cloud service.
+The system is designed to work without an LLM, SLM, hosted inference API, or required cloud service.
 
-## Architectural layers
+## 2. High-level structure
 
-1. **Input and grammar** — normalize text and convert it into a Canonical Intent Representation (CIR).
-2. **Task orchestration** — coordinate subsystem calls and own the task lifecycle.
-3. **Reasoning and planning** — evaluate facts/rules and produce a validated operation plan.
-4. **Information and knowledge** — retrieve facts from the correct source and provide typed information operations.
-5. **Entity resolution** — identify the actual app, file, folder, process, or other target.
-6. **Capabilities and permissions** — describe available actions and decide whether they are currently authorized.
-7. **Execution and platform adapters** — perform narrowly defined operations through OS-specific interfaces.
-8. **Verification and response** — check results and produce a truthful user-facing report.
+The architecture has four engines, a coordinating orchestrator, and supporting systems.
 
-## Four engines
+`User Input → Grammar Engine → Task Orchestrator → Reasoning / Planning → Execution Engine → Verification → Response`
 
-- **Grammar Engine:** produces structured intent. It does not select subsystems or execute actions.
-- **Reasoning Engine:** evaluates facts, rules, truth, uncertainty, contradictions, and bounded search. It does not plan or perform OS actions.
-- **Planning Engine:** decomposes goals, builds dependencies, orders operations, validates and tracks plans. It does not invent facts.
-- **Execution Engine:** dispatches approved operations and tracks their outcomes. It does not independently grant permissions.
+Information retrieval, entity resolution, capability checks, and permission checks are invoked wherever the request requires them. The path is conditional: a request should activate only the components needed to handle it.
 
-## Supporting systems
+## 3. Core engines
 
-Knowledge & Context, Information Processor, Entity Resolution, Capability Registry, Permission Manager, Error & Recovery, Verification, and Response Generation support the engines and orchestrator.
+### Grammar Engine
 
-The **Task Orchestrator** is the coordination layer, not a fifth engine. It chooses which subsystem to invoke based on structured requirements, available handlers, and dependencies. It does not perform grammar parsing, reasoning, planning, or OS execution itself.
+Interprets the user's wording and converts it into a structured Canonical Intent Representation (CIR). It handles tokenization, normalization, grammar parsing, semantic analysis, and intent construction.
 
-## Core boundaries
+The grammar is hybrid: a controlled base grammar can be extended through declarative vocabulary, synonym, spelling, and pattern data. Grammar identifies the requested intent; it does not decide which subsystem executes it or independently determine the identity of a real-world computer resource.
 
-- Grammar describes what the user asked for; orchestration decides who handles each requirement.
-- Knowledge represents what is known; the capability registry represents what the program can do; the permission manager represents what is allowed now.
-- Reasoning establishes logical conclusions; planning creates an operation sequence.
-- Execution only receives validated, authorized operations.
-- Verification independently checks whether the intended result occurred.
-- Subsystems return structured results to the orchestrator. They do not directly control the overall task lifecycle.
+### Reasoning Engine
 
-## Data lifetime
+Evaluates facts and declarative rules to establish what is known, what follows logically, and what remains uncertain. It uses three-valued truth—TRUE, FALSE, and UNKNOWN—so missing evidence is not mistaken for falsehood.
 
-| Data | Source | Lifetime |
+It handles evidence conflicts, uncertainty, confidence assessment, and bounded search. Confidence is an evidence score, not a probability, and cannot grant permission or override capability restrictions. Reasoning does not perform operating-system actions.
+
+### Planning Engine
+
+Turns an established goal into an ordered set of operations. It decomposes goals, identifies dependencies, orders work, checks prerequisites and constraints, and tracks plan progress.
+
+Planning uses established facts; it does not invent facts or replace the Reasoning Engine. If a prerequisite is unknown, dependent operations cannot proceed until that uncertainty is resolved.
+
+### Execution Engine
+
+Carries out approved, structured operations through registered handlers. It dispatches actions and tracks their results, but does not decide whether an action is permitted. It does not translate arbitrary natural-language input into unrestricted shell commands.
+
+## 4. Task Orchestrator
+
+The Task Orchestrator is the system-level coordination layer, not another reasoning or execution engine. It receives structured intent, determines which subsystems are required, dispatches work in dependency order, tracks the task lifecycle, and decides what happens after each subsystem result.
+
+It coordinates clarification, permission requests, retries, recovery, pause/resume, cancellation, and completion. Subsystems return structured results to the orchestrator; they do not independently control the overall task.
+
+Routing is capability- and requirement-driven. The orchestrator matches the needs expressed by the structured intent against available subsystem handlers, checks dependencies, avoids duplicate work, and can revise the route when new requirements appear.
+
+## 5. Supporting systems
+
+- **Knowledge & Context System:** provides persistent static knowledge and user preferences, plus temporary task and session context.
+- **Information Processor:** acquires, parses, normalizes, types, and operates on information from registered sources.
+- **Entity Resolution System:** identifies the actual application, file, folder, process, or other resource referred to by the user.
+- **Capability Registry:** describes which operations the system supports and the requirements of each operation.
+- **Permission Manager:** determines whether a supported operation is authorized in the current context.
+- **Error & Recovery Manager:** coordinates structured failure handling and safe recovery.
+- **Verification System:** checks whether an operation produced its intended observable result.
+- **Response Generation System:** turns structured outcomes into clear user-facing responses.
+
+## 6. Knowledge and information boundaries
+
+Different kinds of information have different sources and lifetimes:
+
+| Information | Source | Lifetime |
 |---|---|---|
-| Grammar vocabulary and patterns | Versioned JSON | Persistent |
-| User preferences explicitly supplied/approved | User-managed JSON | Persistent |
-| General static domain knowledge | Modular JSON | Persistent |
-| Installed apps, files, processes, OS settings and resource state | Live OS providers | Temporary cache / active task only |
+| Grammar and language data | Declarative configuration | Persistent |
+| User preferences | User-managed configuration | Persistent |
+| General static knowledge | Knowledge data | Persistent |
+| Live OS information—apps, files, folders, processes, versions, settings, and resources | Operating-system providers | Temporary cache or active task |
 | Current task facts and references | Task context | Current task |
-| Diagnostic traces | RAM by default; optional local logs | User-configured |
 
-Live OS inventory must never be written into persistent knowledge. Cached OS facts require freshness metadata and invalidation.
+Live operating-system information is never stored as long-term knowledge. It is queried from the operating system when needed and may be cached temporarily with freshness and invalidation handling.
 
-## Routing model
+The Information Processor provides structured data to other systems. The Knowledge & Context System manages the appropriate sources and context; neither should turn transient OS observations into permanent facts.
 
-1. Grammar emits a CIR and explicit requirements.
-2. The orchestrator extracts requirements and matches them against registered subsystem handlers.
-3. Dependencies are resolved and duplicate work is removed.
-4. Required subsystems are dispatched in a valid order.
-5. Results may introduce new requirements, missing information, permission requests, uncertainty, or failure.
-6. The orchestrator updates the workflow and decides whether to continue, clarify, request permission, recover, complete, or stop.
+## 7. Entity, capability, and permission separation
 
-Routing begins with deterministic requirement-to-handler matching using ordinary C++ data structures and declarative subsystem profiles.
+These are distinct questions:
 
-## Initial implementation strategy
+- **Entity Resolution:** Which actual resource does the user mean?
+- **Capability Registry:** Does 7th cmd have a handler for the requested operation?
+- **Permission Manager:** Is that operation allowed now?
 
-Build one end-to-end vertical slice before implementing every subsystem deeply:
+Knowing that an application or file exists does not mean the system can modify it. Having an implementation for an operation does not mean it is authorized. These checks remain separate from reasoning confidence.
 
-`Create a folder named Projects on Desktop`
+## 8. Platform architecture
 
-The first slice should cover input, grammar, orchestration, target resolution, plan validation, permission handling, execution, verification, and response. Expand capabilities only after this path is testable.
+Platform-specific access is isolated behind common interfaces for filesystem, applications, processes, and system information. Linux is the initial implementation target. Other operating systems can provide their own implementations without changing the higher-level engines and supporting systems.
+
+## 9. Safety and execution boundaries
+
+All computer actions pass through defined capabilities and permission checks. Operations validate their arguments and target paths. Read access and modification access are distinct. Destructive operations require appropriate confirmation. The system does not silently escalate privileges or bypass operating-system permissions.
+
+After an operation, verification checks its observable postconditions. A response must distinguish success, partial completion, uncertainty, permission denial, and failure rather than claiming an action succeeded merely because execution was attempted.
+
+## 10. Resource model
+
+The design prioritizes low computational and memory overhead:
+- C++20 and standard-library-first components.
+- Declarative configuration for grammar and static rules.
+- On-demand knowledge loading and targeted information retrieval.
+- Bounded candidate search and reasoning work.
+- Temporary caches for live OS information.
+- No mandatory background service, cloud inference, or heavyweight runtime.
