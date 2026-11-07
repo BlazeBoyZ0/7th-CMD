@@ -1,5 +1,6 @@
 #include "seventh/orchestrator/orchestrator.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace seventh {
@@ -93,9 +94,10 @@ TaskOutcome Orchestrator::execute(
             request.task_id, outcome.result.missing_information);
     }
 
-    if (outcome.state == TaskState::WaitingForUser ||
-        outcome.state == TaskState::WaitingForPermission ||
-        outcome.state == TaskState::Recovery) {
+    const auto final_state = task_states_.state_of(request.task_id);
+    if (final_state == TaskState::WaitingForUser ||
+        final_state == TaskState::WaitingForPermission ||
+        final_state == TaskState::Recovery) {
         pending_tasks_[request.task_id] = PendingTask{request, subsystem};
     } else {
         pending_tasks_.erase(request.task_id);
@@ -216,7 +218,7 @@ TaskOutcome Orchestrator::continue_task(
     }
 
     auto request = pending->second.request;
-    if (permission_granted) {
+    if (permission_granted && current_state == TaskState::WaitingForPermission) {
         request.metadata["permission_granted"] = "true";
         request.input_data["confirmed"] = "yes";
     }
@@ -264,6 +266,10 @@ bool Orchestrator::resolve_question(const TaskId& task_id,
     pending->second.request.context["clarification." + field] = answer;
     if (auto* context = contexts_.find(task_id)) {
         context->values["answer." + field] = answer;
+        context->unresolved_information.erase(
+            std::remove(context->unresolved_information.begin(),
+                        context->unresolved_information.end(), field),
+            context->unresolved_information.end());
     }
     return true;
 }
