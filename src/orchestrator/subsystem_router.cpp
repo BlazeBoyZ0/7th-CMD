@@ -2,6 +2,7 @@
 
 #include "seventh/utilities/json_loader.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include <utility>
@@ -163,6 +164,16 @@ std::shared_ptr<Subsystem> SubsystemRouter::route(
                 continue;
             }
             priority = profile->second.priority;
+
+            bool requirements_met = true;
+            for (const auto& requirement : profile->second.requirements) {
+                if (std::find(request.constraints.begin(), request.constraints.end(),
+                              requirement) == request.constraints.end()) {
+                    requirements_met = false;
+                    break;
+                }
+            }
+            if (!requirements_met) continue;
         }
 
         if (!selected || priority > selected_priority) {
