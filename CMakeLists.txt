@@ -59,6 +59,14 @@ add_executable(7thcmd
     src/systems/knowledge/knowledge_system.cpp
     src/systems/knowledge/knowledge_updater.cpp
     src/systems/knowledge/task_context.cpp
+    src/systems/information/data_acquisition.cpp
+    src/systems/information/data_normalizer.cpp
+    src/systems/information/data_parser.cpp
+    src/systems/information/information_processor.cpp
+    src/systems/information/operation_engine.cpp
+    src/systems/information/provider_registry.cpp
+    src/systems/information/result_builder.cpp
+    src/systems/information/type_system.cpp
     src/orchestrator/orchestrator.cpp
 )
 
