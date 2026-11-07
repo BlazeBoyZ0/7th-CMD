@@ -7,6 +7,21 @@ namespace seventh::response {
 std::string ResponseFormatter::format(const ResponseData& data) const {
     std::ostringstream output;
     switch (data.state) {
+    case TaskState::New:
+        output << "Task created";
+        break;
+    case TaskState::Understanding:
+        output << "Understanding the request";
+        break;
+    case TaskState::Routing:
+        output << "Selecting the required subsystem";
+        break;
+    case TaskState::Processing:
+        output << "Processing the request";
+        break;
+    case TaskState::Recovery:
+        output << "Recovery is required before the task can continue";
+        break;
     case TaskState::Completed:
         output << "Completed";
         break;
@@ -21,9 +36,6 @@ std::string ResponseFormatter::format(const ResponseData& data) const {
         break;
     case TaskState::Cancelled:
         output << "The task was cancelled";
-        break;
-    default:
-        output << "Task status: " << static_cast<int>(data.state);
         break;
     }
 
