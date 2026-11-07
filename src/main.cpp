@@ -122,7 +122,10 @@ int main(int argc, char* argv[]) {
                       << "? Type yes to continue, anything else to cancel: " << std::flush;
             const auto confirmation = input_handler.read_line();
             if (confirmation != "yes" && confirmation != "YES" && confirmation != "Yes") {
-                orchestrator.cancel(outcome.task_id);
+                if (!orchestrator.cancel(outcome.task_id)) {
+                    logger.write(seventh::utilities::LogLevel::Warning,
+                                 "The pending deletion task could not be cancelled.");
+                }
                 std::cout << "Deletion cancelled.\n";
                 continue;
             }

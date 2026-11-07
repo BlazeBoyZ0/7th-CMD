@@ -31,14 +31,22 @@ ExecutionResult ExecutionEngine::execute(const ExecutionRequest& request) {
     result = dispatcher_.dispatch(request);
     switch (result.status) {
     case ExecutionStatus::Success:
-        tracker_.complete(request.task_id);
+        if (!tracker_.complete(request.task_id)) {
+            result.status = ExecutionStatus::Failure;
+            result.error = "Execution succeeded, but its tracker state could not be completed.";
+        }
         break;
     case ExecutionStatus::NeedsPermission:
-        tracker_.block(request.task_id);
+        if (!tracker_.block(request.task_id)) {
+            result.status = ExecutionStatus::Failure;
+            result.error = "Permission is required, but the tracker could not record the blocked state.";
+        }
         break;
     case ExecutionStatus::Unsupported:
     case ExecutionStatus::Failure:
-        tracker_.fail(request.task_id);
+        if (!tracker_.fail(request.task_id)) {
+            result.error += " The tracker could not record the failed state.";
+        }
         break;
     }
     return result;
