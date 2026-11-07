@@ -94,11 +94,15 @@ std::optional<std::string> LinuxFilesystem::read_text(
 PlatformResult LinuxFilesystem::create_directory(const std::string& path) {
     if (!usable_path(path)) return failure("An absolute directory path is required.");
     std::error_code ec;
-    fs::create_directories(path, ec);
-    if (ec) return failure(ec.message());
-    if (!fs::is_directory(path, ec) || ec) {
-        return failure(ec ? ec.message() : "The target exists but is not a directory.");
+    if (fs::exists(path, ec)) {
+        if (ec) return failure(ec.message());
+        return failure("The destination already exists.");
     }
+    if (ec) return failure(ec.message());
+
+    const bool created = fs::create_directories(path, ec);
+    if (ec) return failure(ec.message());
+    if (!created) return failure("The directory was not created.");
     return {true, {}};
 }
 
