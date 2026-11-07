@@ -3,6 +3,7 @@
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -47,6 +48,45 @@ TruthValue evaluate_condition(const RuleCondition& condition,
     return TruthValue::Unknown;
 }
 
+struct ConditionSupport {
+    unsigned confidence{100};
+    std::uint64_t latest_observation{0};
+    bool found{false};
+};
+
+ConditionSupport supporting_evidence(const RuleCondition& condition,
+                                     const std::vector<Fact>& facts) {
+    ConditionSupport support;
+
+    for (const auto& fact : facts) {
+        if (!fact.fresh || fact.subject != condition.subject ||
+            fact.property != condition.property) {
+            continue;
+        }
+
+        bool supports = false;
+        switch (condition.operation) {
+        case ConditionOperator::Equal:
+            supports = fact.value == condition.value;
+            break;
+        case ConditionOperator::NotEqual:
+            supports = fact.value != condition.value;
+            break;
+        case ConditionOperator::Exists:
+            supports = true;
+            break;
+        }
+
+        if (!supports) continue;
+        support.found = true;
+        support.confidence = std::max(support.confidence, fact.confidence);
+        support.latest_observation =
+            std::max(support.latest_observation, fact.observed_at);
+    }
+
+    return support;
+}
+
 bool same_fact(const Fact& left, const Fact& right) {
     return left.subject == right.subject &&
            left.property == right.property &&
@@ -86,15 +126,33 @@ RuleEvaluation RuleEvaluator::evaluate(const std::vector<Rule>& rules,
             }
 
             TruthValue premises = TruthValue::True;
+            unsigned premise_confidence = 100;
+            std::uint64_t latest_observation = 0;
+
             for (const auto& condition : rule.premises) {
-                premises = TruthEvaluator::conjunction(
-                    premises, evaluate_condition(condition, known));
+                const auto truth = evaluate_condition(condition, known);
+                premises = TruthEvaluator::conjunction(premises, truth);
                 if (premises == TruthValue::False) break;
+
+                if (truth == TruthValue::True) {
+                    const auto support = supporting_evidence(condition, known);
+                    if (support.found) {
+                        premise_confidence =
+                            std::min(premise_confidence, support.confidence);
+                        latest_observation =
+                            std::max(latest_observation, support.latest_observation);
+                    }
+                }
             }
 
             if (premises != TruthValue::True) continue;
 
             Fact conclusion = rule.conclusion;
+            conclusion.confidence =
+                std::min(conclusion.confidence, premise_confidence);
+            conclusion.observed_at =
+                std::max(conclusion.observed_at, latest_observation);
+
             if (conclusion.source.empty()) {
                 conclusion.source = rule.id.empty() ? "rule:anonymous"
                                                     : "rule:" + rule.id;
