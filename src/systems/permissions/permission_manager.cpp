@@ -24,7 +24,8 @@ PermissionResult PermissionManager::authorize(
                   request.operation) == capability->operations.end()) {
         return {PermissionDecision::Denied, "The capability does not permit this operation."};
     }
-    if (capability->read_only && request.destructive) {
+    if (capability->read_only &&
+        (request.destructive || request.modifies_state)) {
         return {PermissionDecision::Denied,
                 "A read-only capability cannot authorize a destructive operation."};
     }

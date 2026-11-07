@@ -15,6 +15,7 @@ struct PermissionRequest {
     std::string operation;
     std::string resource_path;
     bool destructive{false};
+    bool modifies_state{false};
     bool user_confirmed{false};
 };
 

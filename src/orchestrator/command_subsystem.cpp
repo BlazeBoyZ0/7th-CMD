@@ -310,6 +310,7 @@ SubsystemResult CommandSubsystem::create_folder(
     permission_request.capability_id = "filesystem.create_directory";
     permission_request.operation = "create_directory";
     permission_request.resource_path = target_path;
+    permission_request.modifies_state = true;
     const auto permission = permission_manager_.authorize(permission_request);
     if (permission.decision != permissions::PermissionDecision::Allowed) {
         SubsystemResult result;
@@ -798,6 +799,7 @@ SubsystemResult CommandSubsystem::modify_path(
     source_permission.capability_id = capability_id;
     source_permission.operation = execution_operation;
     source_permission.resource_path = source_path.string();
+    source_permission.modifies_state = true;
     const auto source_allowed = permission_manager_.authorize(source_permission);
     if (source_allowed.decision != permissions::PermissionDecision::Allowed) {
         return failure(request.request_id, source_allowed.reason);
@@ -807,6 +809,7 @@ SubsystemResult CommandSubsystem::modify_path(
     destination_permission.capability_id = capability_id;
     destination_permission.operation = execution_operation;
     destination_permission.resource_path = destination_path.string();
+    destination_permission.modifies_state = true;
     const auto destination_allowed = permission_manager_.authorize(destination_permission);
     if (destination_allowed.decision != permissions::PermissionDecision::Allowed) {
         return failure(request.request_id, destination_allowed.reason);
@@ -953,6 +956,7 @@ SubsystemResult CommandSubsystem::delete_target(
     permission_request.operation = "delete_path";
     permission_request.resource_path = path;
     permission_request.destructive = true;
+    permission_request.modifies_state = true;
     const auto confirmation = request.input_data.find("confirmed");
     permission_request.user_confirmed =
         confirmation != request.input_data.end() && confirmation->second == "yes";
@@ -1258,6 +1262,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         permission_request.capability_id = "filesystem.create_directory";
         permission_request.operation = "create_directory";
         permission_request.resource_path = target;
+        permission_request.modifies_state = true;
         const auto permission = permission_manager_.authorize(permission_request);
         if (permission.decision != permissions::PermissionDecision::Allowed) {
             return failure(request.request_id, permission.reason);
