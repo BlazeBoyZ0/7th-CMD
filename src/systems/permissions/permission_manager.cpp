@@ -27,7 +27,7 @@ PermissionResult PermissionManager::authorize(
     if (capability->read_only &&
         (request.destructive || request.modifies_state)) {
         return {PermissionDecision::Denied,
-                "A read-only capability cannot authorize a destructive operation."};
+                "A read-only capability cannot authorize an operation that changes system state."};
     }
     if (!checker_.path_is_allowed(request.resource_path, *capability)) {
         return {PermissionDecision::Denied,
