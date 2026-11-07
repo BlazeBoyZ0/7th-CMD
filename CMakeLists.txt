@@ -52,6 +52,13 @@ add_executable(7thcmd
     src/engines/execution/execution_engine.cpp
     src/engines/execution/execution_tracker.cpp
     src/engines/execution/operation_executor.cpp
+    src/systems/knowledge/clarification_manager.cpp
+    src/systems/knowledge/context_manager.cpp
+    src/systems/knowledge/knowledge_interface.cpp
+    src/systems/knowledge/knowledge_retriever.cpp
+    src/systems/knowledge/knowledge_system.cpp
+    src/systems/knowledge/knowledge_updater.cpp
+    src/systems/knowledge/task_context.cpp
     src/orchestrator/orchestrator.cpp
 )
 
