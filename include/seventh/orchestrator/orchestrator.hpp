@@ -34,7 +34,8 @@ public:
         StringList constraints = {});
     [[nodiscard]] TaskState state_of(const TaskId& task_id) const;
     [[nodiscard]] bool cancel(const TaskId& task_id);
-    [[nodiscard]] bool resume(const TaskId& task_id);
+    [[nodiscard]] bool resume(const TaskId& task_id,
+                              bool permission_granted = false);
     [[nodiscard]] std::optional<knowledge::ClarificationRequest> next_question(
         const TaskId& task_id) const;
     bool resolve_question(const TaskId& task_id, const std::string& field);

@@ -84,7 +84,16 @@ add_executable(7thcmd
     src/systems/verification/verification_system.cpp
     src/systems/response/response_formatter.cpp
     src/systems/response/response_generator.cpp
+    src/orchestrator/cancellation_handler.cpp
+    src/orchestrator/interaction_coordinator.cpp
     src/orchestrator/orchestrator.cpp
+    src/orchestrator/pause_resume_manager.cpp
+    src/orchestrator/request_manager.cpp
+    src/orchestrator/result_handler.cpp
+    src/orchestrator/subsystem_dispatcher.cpp
+    src/orchestrator/subsystem_router.cpp
+    src/orchestrator/task_state_manager.cpp
+    src/orchestrator/workflow_controller.cpp
 )
 
 target_include_directories(7thcmd PRIVATE include)
