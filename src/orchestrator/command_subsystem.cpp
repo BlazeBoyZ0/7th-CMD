@@ -327,10 +327,16 @@ SubsystemResult CommandSubsystem::create_folder(
     execution_request.authorization_granted = true;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                executed.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, executed.error);
     }
-    plan_state_manager_.complete(plan, plan.tasks.front().id);
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
+    }
 
     verification::VerificationRequest verification_request;
     verification_request.operation = "create_directory";
@@ -534,10 +540,16 @@ SubsystemResult CommandSubsystem::open_target(
     execution_request.authorization_granted = true;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                executed.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, executed.error);
     }
-    plan_state_manager_.complete(plan, plan.tasks.front().id);
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
+    }
 
     verification::VerificationRequest verification_request;
     verification_request.operation = operation;
@@ -618,7 +630,10 @@ SubsystemResult CommandSubsystem::search_items(
     data_request.value = intent.query;
     const auto search = processor.process(data_request);
     if (!search.success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                executed.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, search.error);
     }
 
@@ -812,10 +827,16 @@ SubsystemResult CommandSubsystem::modify_path(
     execution_request.authorization_granted = true;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                executed.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, executed.error);
     }
-    plan_state_manager_.complete(plan, plan.tasks.front().id);
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
+    }
 
     verification::VerificationRequest verification_request;
     verification_request.operation = execution_operation;
@@ -963,10 +984,16 @@ SubsystemResult CommandSubsystem::delete_target(
     execution_request.authorization_granted = true;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                executed.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, executed.error);
     }
-    plan_state_manager_.complete(plan, plan.tasks.front().id);
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
+    }
 
     verification::VerificationRequest verification_request;
     verification_request.operation = "delete_path";
@@ -1084,10 +1111,16 @@ SubsystemResult CommandSubsystem::count_file(
     execution_request.authorization_granted = true;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                executed.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, executed.error);
     }
-    plan_state_manager_.complete(plan, plan.tasks.front().id);
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
+    }
 
     const auto text_value = executed.output_data.find("text");
     if (text_value == executed.output_data.end()) {
@@ -1252,8 +1285,9 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         execution_request.authorization_granted = true;
         const auto executed = execution_engine_.execute(execution_request);
         if (executed.status != execution::ExecutionStatus::Success) {
-            plan_state_manager_.fail(plan, task.id);
+            const bool marked_failed = plan_state_manager_.fail(plan, task.id);
             auto result = failure(request.request_id, executed.error);
+            if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
             return result;
@@ -1265,15 +1299,22 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         verification_request.actual["exists"] =
             platform_.filesystem().exists(target_paths[index]) ? "true" : "false";
         if (!verification_system_.verify(verification_request).verified) {
-            plan_state_manager_.fail(plan, task.id);
+            const bool marked_failed = plan_state_manager_.fail(plan, task.id);
             auto result = failure(request.request_id,
                 "A folder was created but its verification did not pass.");
+            if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
             return result;
         }
 
-        plan_state_manager_.complete(plan, task.id);
+        if (!plan_state_manager_.complete(plan, task.id)) {
+            auto result = failure(request.request_id,
+                "A folder was created and verified, but its plan state could not be completed.");
+            result.result_data["completed_steps"] = std::to_string(completed + 1);
+            result.result_data["total_steps"] = std::to_string(clauses.size());
+            return result;
+        }
         remember_folder(folder_names[index], target_paths[index]);
         ++completed;
     }
