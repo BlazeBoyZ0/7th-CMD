@@ -3,6 +3,7 @@
 #include "seventh/utilities/json_loader.hpp"
 
 #include <filesystem>
+#include <utility>
 
 namespace seventh::grammar {
 namespace {
@@ -30,8 +31,10 @@ GrammarConfig GrammarConfig::defaults() {
 }
 
 std::string GrammarConfig::canonical_term(const std::string& term) const {
-    const auto found = synonyms.find(term);
-    return found == synonyms.end() ? term : found->second;
+    const auto synonym = synonyms.find(term);
+    if (synonym != synonyms.end()) return synonym->second;
+    const auto correction = spelling_corrections.find(term);
+    return correction == spelling_corrections.end() ? term : correction->second;
 }
 
 bool GrammarConfigLoader::load_directory(
@@ -79,26 +82,47 @@ bool GrammarConfigLoader::load_directory(
         }
     }
 
+    const auto patterns = loader.load_file((root / "patterns.json").string(), error);
+    if (!patterns || !patterns->as_object()) return false;
+    const auto pattern_list = patterns->as_object()->find("patterns");
+    if (pattern_list == patterns->as_object()->end() ||
+        !pattern_list->second.as_array()) {
+        error = "Grammar patterns are missing their patterns array.";
+        return false;
+    }
+    for (const auto& pattern : *pattern_list->second.as_array()) {
+        if (!pattern.as_object()) continue;
+        std::string id;
+        if (read_string(*pattern.as_object(), "id", id)) {
+            loaded.pattern_ids.push_back(std::move(id));
+        }
+    }
+
+    const auto spelling = loader.load_file((root / "spelling.json").string(), error);
+    if (!spelling || !spelling->as_object()) return false;
+    const auto corrections = spelling->as_object()->find("corrections");
+    if (corrections == spelling->as_object()->end() ||
+        !corrections->second.as_array()) {
+        error = "Grammar spelling data is missing its corrections array.";
+        return false;
+    }
+    for (const auto& correction : *corrections->second.as_array()) {
+        if (!correction.as_object()) continue;
+        std::string from;
+        std::string to;
+        if (read_string(*correction.as_object(), "from", from) &&
+            read_string(*correction.as_object(), "to", to)) {
+            loaded.spelling_corrections[std::move(from)] = std::move(to);
+        }
+    }
+
     if (loaded.actions.empty() || loaded.entities.empty()) {
         error = "Grammar vocabulary must define at least one action and one entity.";
         return false;
     }
 
-    const auto patterns = loader.load_file((root / "patterns.json").string(), error);
-    if (patterns && patterns->as_object()) {
-        const auto items = patterns->as_object()->find("patterns");
-        if (items != patterns->as_object()->end() && items->second.as_array()) {
-            for (const auto& item : *items->second.as_array()) {
-                if (!item.as_object()) continue;
-                std::string id;
-                if (read_string(*item.as_object(), "id", id)) {
-                    loaded.pattern_ids.push_back(std::move(id));
-                }
-            }
-        }
-    }
-
     config = std::move(loaded);
+    error.clear();
     return true;
 }
 

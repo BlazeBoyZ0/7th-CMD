@@ -11,6 +11,7 @@ struct GrammarConfig {
     std::set<std::string> actions;
     std::set<std::string> entities;
     std::map<std::string, std::string> synonyms;
+    std::map<std::string, std::string> spelling_corrections;
     std::vector<std::string> pattern_ids;
 
     [[nodiscard]] static GrammarConfig defaults();
