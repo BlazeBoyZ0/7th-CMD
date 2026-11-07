@@ -31,8 +31,9 @@ bool ClarificationManager::resolve(const std::string& task_id,
         [&](const ClarificationRequest& request) {
             return request.required_field == required_field;
         }), requests.end());
+    const bool removed = requests.size() != previous_size;
     if (requests.empty()) pending_.erase(found);
-    return requests.size() != previous_size;
+    return removed;
 }
 
 void ClarificationManager::cancel_task(const std::string& task_id) {
