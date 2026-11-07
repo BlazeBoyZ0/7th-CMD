@@ -523,7 +523,7 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         return search_items(request, intent);
     }
     return failure(request.request_id,
-        "The current end-to-end workflow supports folder creation and opening applications or folders.");
+        "The current end-to-end workflow supports folder creation, opening applications or folders, and scoped directory searches.");
 }
 
 } // namespace seventh

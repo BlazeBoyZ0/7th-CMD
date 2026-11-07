@@ -124,8 +124,10 @@ execution::ExecutionResult LinuxOperationExecutor::execute(
         return result;
     }
 
+    constexpr std::size_t max_displayed_matches = 50;
     std::string matches;
     std::size_t count = 0;
+    std::size_t displayed = 0;
     const auto needle = query == request.input_data.end()
         ? std::string{} : lower(query->second);
     const auto type = entity_type == request.input_data.end()
@@ -135,13 +137,17 @@ execution::ExecutionResult LinuxOperationExecutor::execute(
         if (type == "file" && entry.directory) continue;
         if (type == "folder" && !entry.directory) continue;
         if (!needle.empty() && lower(entry.name).find(needle) == std::string::npos) continue;
-        if (count != 0) matches += '\n';
-        matches += entry.name + " | " + entry.path;
         ++count;
+        if (displayed >= max_displayed_matches) continue;
+        if (displayed != 0) matches += '\n';
+        matches += entry.name + " | " + entry.path;
+        ++displayed;
     }
 
     result.status = execution::ExecutionStatus::Success;
     result.output_data["count"] = std::to_string(count);
+    result.output_data["displayed"] = std::to_string(displayed);
+    result.output_data["truncated"] = count > displayed ? "true" : "false";
     result.output_data["matches"] = std::move(matches);
     result.output_data["directory"] = path->second;
     return result;

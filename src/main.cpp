@@ -81,7 +81,7 @@ int main(int argc, char* argv[]) {
         response.missing_information = outcome.result.missing_information;
 
         for (const auto* key : {"operation", "entity_type", "name",
-                                "destination", "path", "verified", "directory", "query", "count", "matches"}) {
+                                "destination", "path", "verified", "directory", "query", "count", "displayed", "truncated", "matches"}) {
             const auto found = outcome.result.result_data.find(key);
             if (found != outcome.result.result_data.end() && !found->second.empty()) {
                 response.details[key] = found->second;
