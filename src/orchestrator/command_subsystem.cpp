@@ -56,7 +56,7 @@ SubsystemResult needs_choice(
     const auto displayed = std::min(candidates.size(), max_options);
     for (std::size_t index = 0; index < displayed; ++index) {
         const auto& candidate = candidates[index];
-        if (!options.empty()) options += '\\n';
+        if (!options.empty()) options += '\n';
         options += std::to_string(index + 1) + ". " + candidate.name +
                    " | " + candidate.id;
         if (!candidate.location.empty()) options += " | " + candidate.location;

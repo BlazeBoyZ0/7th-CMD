@@ -179,9 +179,9 @@ int main(int argc, char* argv[]) {
                     const auto options = outcome.result.result_data.find("choice_options");
                     if (options != outcome.result.result_data.end() &&
                         !options->second.empty()) {
-                        std::cout << "Candidates:\\n" << options->second << '\\n';
+                        std::cout << "Candidates:\n" << options->second << '\n';
                     } else if (!outcome.result.error.empty()) {
-                        std::cout << outcome.result.error << '\\n';
+                        std::cout << outcome.result.error << '\n';
                     }
 
                     std::cout << question->question << " (or 'cancel'): " << std::flush;
@@ -204,7 +204,7 @@ int main(int argc, char* argv[]) {
                     }
                     if (!orchestrator.resolve_question(
                             outcome.task_id, question->required_field, answer)) {
-                        std::cout << "That answer could not be applied. Try again.\\n";
+                        std::cout << "That answer could not be applied. Try again.\n";
                     }
                 }
                 if (cancelled) break;
