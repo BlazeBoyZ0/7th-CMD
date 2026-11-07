@@ -1,4 +1,12 @@
 {
   "schema_version": 1,
-  "patterns": []
+  "patterns": [
+    {"id": "create_named_entity", "operation": "create", "shape": ["create|make", "entity", "named", "name", "optional_location"]},
+    {"id": "rename_entity", "operation": "rename", "shape": ["rename", "entity", "source", "to", "destination"]},
+    {"id": "move_entity", "operation": "move", "shape": ["move", "entity", "source", "to", "destination"]},
+    {"id": "copy_entity", "operation": "copy", "shape": ["copy|duplicate", "entity", "source", "to", "destination"]},
+    {"id": "delete_entity", "operation": "delete", "shape": ["delete|remove", "entity", "target"]},
+    {"id": "search_entity", "operation": "search", "shape": ["search|find", "query"]},
+    {"id": "open_application", "operation": "open", "shape": ["open|launch|start", "application"]}
+  ]
 }
