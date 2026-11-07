@@ -3,6 +3,7 @@
 #include "seventh/core/subsystem.hpp"
 #include "seventh/engines/execution/execution_engine.hpp"
 #include "seventh/engines/grammar/grammar_config.hpp"
+#include "seventh/engines/grammar/grammar_engine.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
 #include "seventh/engines/planning/plan_state_manager.hpp"
 #include "seventh/engines/reasoning/reasoning_engine.hpp"
