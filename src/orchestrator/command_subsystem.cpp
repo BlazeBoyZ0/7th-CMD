@@ -183,9 +183,29 @@ std::string CommandSubsystem::resolve_destination(
     if (lower(destination) == "desktop") {
         return (std::filesystem::path(home) / "Desktop").string();
     }
-    const auto remembered = session_paths_.find(lower(destination));
-    if (remembered != session_paths_.end()) return remembered->second;
+    const auto* session = context_manager_.find("session");
+    if (session) {
+        const auto key = "folder:" + lower(destination);
+        if (session->values.contains("ambiguous:" + key)) return {};
+        const auto remembered = session->values.find(key);
+        if (remembered != session->values.end()) return remembered->second;
+    }
     return (std::filesystem::path(home) / requested).lexically_normal().string();
+}
+
+void CommandSubsystem::remember_folder(
+    const std::string& name, const std::string& path) {
+    auto& session = context_manager_.create("session");
+    const auto key = "folder:" + lower(name);
+    const auto ambiguous_key = "ambiguous:" + key;
+    if (session.values.contains(ambiguous_key)) return;
+    const auto previous = session.values.find(key);
+    if (previous != session.values.end() && previous->second != path) {
+        session.values.erase(previous);
+        session.values[ambiguous_key] = "true";
+        return;
+    }
+    session.values[key] = path;
 }
 
 SubsystemResult CommandSubsystem::create_folder(
@@ -318,7 +338,7 @@ SubsystemResult CommandSubsystem::create_folder(
     result.result_data["destination"] = destination_path;
     result.result_data["path"] = target_path;
     result.result_data["verified"] = "true";
-    session_paths_[lower(intent.name)] = target_path;
+    remember_folder(intent.name, target_path);
     return result;
 }
 
@@ -1174,7 +1194,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         }
 
         plan_state_manager_.complete(plan, task.id);
-        session_paths_[lower(folder_names[index])] = target_paths[index];
+        remember_folder(folder_names[index], target_paths[index]);
         ++completed;
     }
 

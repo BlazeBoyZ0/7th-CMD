@@ -10,10 +10,10 @@
 #include "seventh/platform/platform_interface.hpp"
 #include "seventh/systems/capabilities/capability_registry.hpp"
 #include "seventh/systems/entity_resolution/entity_resolver.hpp"
+#include "seventh/systems/knowledge/context_manager.hpp"
 #include "seventh/systems/permissions/permission_manager.hpp"
 #include "seventh/systems/verification/verification_system.hpp"
 
-#include <map>
 #include <vector>
 
 namespace seventh {
@@ -30,6 +30,7 @@ public:
 
 private:
     [[nodiscard]] std::string resolve_destination(const std::string& destination) const;
+    void remember_folder(const std::string& name, const std::string& path);
     [[nodiscard]] SubsystemResult create_folder(
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
     [[nodiscard]] SubsystemResult open_target(
@@ -57,7 +58,7 @@ private:
     permissions::PermissionManager permission_manager_;
     execution::ExecutionEngine execution_engine_;
     verification::VerificationSystem verification_system_;
-    std::map<std::string, std::string> session_paths_;
+    knowledge::ContextManager context_manager_;
 };
 
 } // namespace seventh
