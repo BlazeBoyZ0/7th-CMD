@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     orchestrator.register_subsystem(
         std::make_shared<seventh::grammar::GrammarSubsystem>(
             std::move(grammar_config)));
-    seventh::systems::response::ResponseGenerator response_generator;
+    seventh::response::ResponseGenerator response_generator;
     seventh::cli::InputHandler input_handler;
 
     while (true) {
