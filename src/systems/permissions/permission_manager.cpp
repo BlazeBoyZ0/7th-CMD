@@ -24,16 +24,18 @@ PermissionResult PermissionManager::authorize(
                   request.operation) == capability->operations.end()) {
         return {PermissionDecision::Denied, "The capability does not permit this operation."};
     }
+    if (capability->read_only && request.destructive) {
+        return {PermissionDecision::Denied,
+                "A read-only capability cannot authorize a destructive operation."};
+    }
     if (!checker_.path_is_allowed(request.resource_path, *capability)) {
         return {PermissionDecision::Denied,
                 "The target path is outside the capability's allowed locations."};
     }
-    if (!capability->read_only && request.destructive && !request.user_confirmed) {
-        return {PermissionDecision::RequiresConfirmation,
-                "A modifying operation requires explicit user confirmation."};
-    }
-    return authorization_.authorize_confirmation(
-        request, capability->requires_confirmation);
+
+    const bool confirmation_required = capability->requires_confirmation ||
+        (!capability->read_only && request.destructive);
+    return authorization_.authorize_confirmation(request, confirmation_required);
 }
 
 } // namespace seventh::permissions
