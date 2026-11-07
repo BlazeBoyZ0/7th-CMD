@@ -207,6 +207,10 @@ void CommandSubsystem::remember_folder(
         return;
     }
     session.values[key] = path;
+    session.values["last_entity.type"] = "folder";
+    session.values["last_entity.name"] = name;
+    session.values["last_entity.path"] = path;
+    session.values.erase("last_entity.id");
 }
 
 SubsystemResult CommandSubsystem::create_folder(
@@ -349,7 +353,40 @@ SubsystemResult CommandSubsystem::open_target(
     std::optional<entity_resolution::EntityCandidate> selected_folder;
     const auto wanted = lower(intent.name);
 
-    if (wanted == "browser") {
+    if (wanted == "it" || wanted == "that" || wanted == "that folder") {
+        const auto* session = context_manager_.find("session");
+        if (!session || !session->values.contains("last_entity.type")) {
+            return failure(request.request_id,
+                "There is no recent target in the current session to refer to.");
+        }
+        const auto type = session->values.at("last_entity.type");
+        if (type == "folder" && session->values.contains("last_entity.path")) {
+            const auto path = session->values.at("last_entity.path");
+            if (!platform_.filesystem().exists(path)) {
+                return failure(request.request_id,
+                    "The previously referenced folder is no longer available.");
+            }
+            selected_folder = entity_resolution::EntityCandidate{
+                path,
+                session->values.contains("last_entity.name")
+                    ? session->values.at("last_entity.name") : "folder",
+                entity_resolution::EntityType::Folder,
+                std::filesystem::path(path).parent_path().string(),
+                "session.context", true, 100
+            };
+        } else if (type == "application" &&
+                   session->values.contains("last_entity.id")) {
+            selected_app = platform_.applications().find(
+                session->values.at("last_entity.id"));
+            if (!selected_app) {
+                return failure(request.request_id,
+                    "The previously referenced application is no longer available.");
+            }
+        } else {
+            return failure(request.request_id,
+                "The previous target cannot be opened by this command.");
+        }
+    } else if (wanted == "browser") {
         selected_app = platform_.applications().find("browser");
         if (!selected_app) selected_app = platform_.applications().find_default("browser");
         if (!selected_app) {
@@ -507,7 +544,17 @@ SubsystemResult CommandSubsystem::open_target(
     result.result_data["operation"] = "open";
     result.result_data["entity_type"] = entity_type;
     result.result_data["name"] = resolved_name;
-    if (operation == "open_path") result.result_data["path"] = operation_data["path"];
+    auto& session = context_manager_.create("session");
+    session.values["last_entity.type"] = entity_type;
+    session.values["last_entity.name"] = resolved_name;
+    if (operation == "open_path") {
+        result.result_data["path"] = operation_data["path"];
+        session.values["last_entity.path"] = operation_data["path"];
+        session.values.erase("last_entity.id");
+    } else {
+        session.values["last_entity.id"] = operation_data["application_id"];
+        session.values.erase("last_entity.path");
+    }
     return result;
 }
 
