@@ -1,5 +1,7 @@
 #include "seventh/engines/execution/execution_engine.hpp"
 
+#include <utility>
+
 namespace seventh::execution {
 
 void ExecutionEngine::register_executor(std::shared_ptr<OperationExecutor> executor) {
