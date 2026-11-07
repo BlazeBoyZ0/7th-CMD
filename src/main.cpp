@@ -3,7 +3,9 @@
 #include "seventh/cli/terminal_output.hpp"
 #include "seventh/engines/grammar/grammar_config.hpp"
 #include "seventh/engines/grammar/grammar_subsystem.hpp"
+#include "seventh/orchestrator/command_subsystem.hpp"
 #include "seventh/orchestrator/orchestrator.hpp"
+#include "seventh/platform/linux/linux_platform.hpp"
 #include "seventh/systems/response/response_generator.hpp"
 #include "seventh/utilities/logger.hpp"
 
@@ -53,10 +55,12 @@ int main(int argc, char* argv[]) {
     seventh::cli::print_startup_message();
     std::cout << "Type an instruction, or 'exit' to quit.\n";
 
+    seventh::platform::linux_backend::LinuxPlatform platform;
     seventh::Orchestrator orchestrator;
     orchestrator.register_subsystem(
-        std::make_shared<seventh::grammar::GrammarSubsystem>(
-            std::move(grammar_config)));
+        std::make_shared<seventh::grammar::GrammarSubsystem>(grammar_config));
+    orchestrator.register_subsystem(
+        std::make_shared<seventh::CommandSubsystem>(platform));
     seventh::response::ResponseGenerator response_generator;
     seventh::cli::InputHandler input_handler;
 
@@ -67,25 +71,21 @@ int main(int argc, char* argv[]) {
         if (input == "exit" || input == "quit") break;
 
         const auto outcome = orchestrator.execute(
-            "interpret", {{"raw_input", input}});
+            "command", {{"raw_input", input}});
 
         seventh::response::ResponseData response;
         response.task_id = outcome.task_id;
         response.state = outcome.state;
-        response.operation = "interpret";
+        response.operation = "command";
         response.error = outcome.result.error;
         response.missing_information = outcome.result.missing_information;
 
-        if (outcome.result.status == seventh::SubsystemStatus::Success) {
-            const auto& data = outcome.result.result_data;
-            for (const auto* key : {"operation", "entity_type", "name",
-                                    "source", "destination", "query"}) {
-                const auto found = data.find(key);
-                if (found != data.end() && !found->second.empty()) {
-                    response.details[key] = found->second;
-                }
+        for (const auto* key : {"operation", "entity_type", "name",
+                                "destination", "path", "verified"}) {
+            const auto found = outcome.result.result_data.find(key);
+            if (found != outcome.result.result_data.end() && !found->second.empty()) {
+                response.details[key] = found->second;
             }
-            response.details["execution"] = "Not performed; interpretation only.";
         }
 
         std::cout << response_generator.generate(response) << '\n';

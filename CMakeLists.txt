@@ -91,9 +91,11 @@ add_executable(7thcmd
     src/platform/linux/applications/linux_applications.cpp
     src/platform/linux/filesystem/linux_filesystem.cpp
     src/platform/linux/linux_platform.cpp
+    src/platform/linux/linux_operation_executor.cpp
     src/platform/linux/processes/linux_processes.cpp
     src/platform/linux/system/linux_system.cpp
     src/orchestrator/cancellation_handler.cpp
+    src/orchestrator/command_subsystem.cpp
     src/orchestrator/interaction_coordinator.cpp
     src/orchestrator/orchestrator.cpp
     src/orchestrator/pause_resume_manager.cpp
