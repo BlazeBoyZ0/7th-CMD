@@ -4,6 +4,8 @@
 #include "seventh/systems/entity_resolution/entity_types.hpp"
 #include "seventh/systems/permissions/permission_types.hpp"
 #include "seventh/systems/verification/verification_types.hpp"
+#include "seventh/systems/information/information_processor.hpp"
+#include "seventh/systems/information/provider_registry.hpp"
 
 #include <cctype>
 #include <cstdlib>
@@ -111,6 +113,17 @@ CommandSubsystem::CommandSubsystem(
         delete_path.allowed_roots.emplace_back(home);
     }
     capabilities_.register_capability(std::move(delete_path));
+
+    capabilities::CapabilityDefinition read_text;
+    read_text.id = "filesystem.read_text";
+    read_text.description = "Read small text files inside the user's home directory.";
+    read_text.operations = {"read_text"};
+    read_text.enabled = true;
+    read_text.read_only = true;
+    if (const char* home = std::getenv("HOME")) {
+        read_text.allowed_roots.emplace_back(home);
+    }
+    capabilities_.register_capability(std::move(read_text));
 
     capabilities::CapabilityDefinition launch_application;
     launch_application.id = "application.launch";
@@ -845,6 +858,143 @@ SubsystemResult CommandSubsystem::delete_target(
     return result;
 }
 
+
+SubsystemResult CommandSubsystem::count_file(
+    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
+    const char* home = std::getenv("HOME");
+    if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
+
+    std::string metric = lower(intent.query);
+    std::string operation;
+    if (metric == "word" || metric == "words") operation = "word_count";
+    else if (metric == "line" || metric == "lines") operation = "line_count";
+    else if (metric == "character" || metric == "characters") operation = "character_count";
+    else return failure(request.request_id,
+        "Choose a supported count: words, lines, or characters.");
+
+    entity_resolution::ResolutionRequest file_request;
+    file_request.query = intent.name;
+    file_request.expected_type = entity_resolution::EntityType::File;
+    const std::filesystem::path requested(intent.name);
+    std::filesystem::path resolved_path;
+    if (requested.is_absolute()) resolved_path = requested;
+    else {
+        const auto home_path = std::filesystem::path(home) / requested;
+        if (platform_.filesystem().exists(home_path.string())) resolved_path = home_path;
+    }
+
+    if (!resolved_path.empty() && platform_.filesystem().exists(resolved_path.string())) {
+        file_request.query = resolved_path.filename().string();
+        std::error_code type_error;
+        if (std::filesystem::is_regular_file(resolved_path, type_error) && !type_error) {
+            file_request.candidates.push_back({
+                resolved_path.string(), resolved_path.filename().string(),
+                entity_resolution::EntityType::File,
+                resolved_path.parent_path().string(), "linux.filesystem", true, 0
+            });
+        }
+    } else {
+        const std::vector<std::filesystem::path> roots{
+            home,
+            std::filesystem::path(home) / "Desktop",
+            std::filesystem::path(home) / "Documents",
+            std::filesystem::path(home) / "Downloads"
+        };
+        for (const auto& root : roots) {
+            std::string list_error;
+            const auto entries = platform_.filesystem().list(root.string(), list_error);
+            for (const auto& entry : entries) {
+                if (entry.directory) continue;
+                file_request.candidates.push_back({
+                    entry.path, entry.name, entity_resolution::EntityType::File,
+                    root.string(), "linux.filesystem", true, 0
+                });
+            }
+        }
+    }
+
+    const auto match = entity_resolver_.resolve(std::move(file_request));
+    if (match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+        return needs_choice(request.request_id, "file");
+    }
+    if (match.status != entity_resolution::ResolutionStatus::Found) {
+        return failure(request.request_id, "The text file could not be found.");
+    }
+
+    const auto path = match.selected.id;
+    permissions::PermissionRequest permission_request;
+    permission_request.capability_id = "filesystem.read_text";
+    permission_request.operation = "read_text";
+    permission_request.resource_path = path;
+    const auto permission = permission_manager_.authorize(permission_request);
+    if (permission.decision != permissions::PermissionDecision::Allowed) {
+        return failure(request.request_id, permission.reason);
+    }
+
+    planning::PlanningRequest planning_request;
+    planning_request.goal = "Count " + metric + " in " + path;
+    planning::TaskDraft draft;
+    draft.id = "count-file-text";
+    draft.operation = "read_text";
+    draft.input_data["path"] = path;
+    planning_request.tasks.push_back(std::move(draft));
+    auto plan = planning_engine_.create_plan(planning_request);
+    if (!plan.valid || plan.tasks.empty()) {
+        return failure(request.request_id, "Unable to create a valid text-analysis plan.");
+    }
+    if (!plan_state_manager_.start(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The text-analysis task could not start.");
+    }
+
+    execution::ExecutionRequest execution_request;
+    execution_request.task_id = request.task_id;
+    execution_request.operation = "read_text";
+    execution_request.input_data = plan.tasks.front().input_data;
+    execution_request.requires_authorization = true;
+    execution_request.authorization_granted = true;
+    const auto executed = execution_engine_.execute(execution_request);
+    if (executed.status != execution::ExecutionStatus::Success) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        return failure(request.request_id, executed.error);
+    }
+    plan_state_manager_.complete(plan, plan.tasks.front().id);
+
+    const auto text_value = executed.output_data.find("text");
+    if (text_value == executed.output_data.end()) {
+        return failure(request.request_id, "The file reader returned no text content.");
+    }
+
+    information::ProviderRegistry registry;
+    information::InformationProcessor processor(registry);
+    information::DataRequest data_request;
+    data_request.operation = operation;
+    data_request.text_input = text_value->second;
+    const auto count = processor.process(data_request);
+    if (!count.success) return failure(request.request_id, count.error);
+
+    verification::VerificationRequest verification_request;
+    verification_request.operation = "count_file_text";
+    verification_request.expected["exists"] = "true";
+    verification_request.actual["exists"] =
+        platform_.filesystem().exists(path) ? "true" : "false";
+    if (!verification_system_.verify(verification_request).verified) {
+        return failure(request.request_id, "The file could not be verified after reading.");
+    }
+
+    SubsystemResult result;
+    result.request_id = request.request_id;
+    result.status = SubsystemStatus::Success;
+    result.result_data["operation"] = "count";
+    result.result_data["entity_type"] = "file";
+    result.result_data["name"] = std::filesystem::path(path).filename().string();
+    result.result_data["path"] = path;
+    result.result_data["metric"] = metric;
+    result.result_data["value"] = count.scalar;
+    result.result_data["bytes"] = executed.output_data.contains("bytes")
+        ? executed.output_data.at("bytes") : "0";
+    return result;
+}
+
 SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     const auto raw = request.input_data.find("raw_input");
     if (raw == request.input_data.end() || raw->second.empty()) {
@@ -882,6 +1032,9 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     }
     if (intent.operation == "delete") {
         return delete_target(request, intent);
+    }
+    if (intent.operation == "count") {
+        return count_file(request, intent);
     }
     return failure(request.request_id,
         "The current end-to-end workflow supports folder creation, opening applications or folders, scoped directory searches, rename, move, file copy, and confirmed deletion of files or empty folders.");

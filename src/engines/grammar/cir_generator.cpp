@@ -79,6 +79,12 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
         }
     } else if (node.operation == "delete" || node.operation == "open") {
         intent.name = join(tokens, target_start, tokens.size());
+    } else if (node.operation == "count") {
+        intent.query = tokens.size() > 1 ? lower(tokens[1]) : std::string{};
+        if (target_start < tokens.size() && lower(tokens[target_start]) == "named") {
+            ++target_start;
+        }
+        intent.name = join(tokens, target_start, tokens.size());
     } else if (node.operation == "search") {
         auto query_start = target_start;
         const auto named = find_token(tokens, "named", target_start);
@@ -106,6 +112,9 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
     if ((node.operation == "delete" || node.operation == "open") &&
         intent.name.empty()) {
         intent.missing_information.emplace_back("target");
+    }
+    if (node.operation == "count" && intent.name.empty()) {
+        intent.missing_information.emplace_back("file");
     }
 
     intent.valid = intent.missing_information.empty();

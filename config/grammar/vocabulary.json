@@ -9,6 +9,7 @@
     {"term": "delete", "category": "action"},
     {"term": "search", "category": "action"},
     {"term": "open", "category": "action"},
+    {"term": "count", "category": "action"},
     {"term": "folder", "category": "entity"},
     {"term": "directory", "category": "entity"},
     {"term": "file", "category": "entity"},

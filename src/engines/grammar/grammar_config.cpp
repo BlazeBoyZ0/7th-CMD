@@ -20,7 +20,7 @@ bool read_string(const utilities::JsonValue::Object& object,
 
 GrammarConfig GrammarConfig::defaults() {
     GrammarConfig config;
-    config.actions = {"create", "rename", "move", "copy", "delete", "search", "open"};
+    config.actions = {"create", "rename", "move", "copy", "delete", "search", "open", "count"};
     config.entities = {"folder", "file", "application", "process", "item"};
     config.synonyms = {
         {"make", "create"}, {"duplicate", "copy"}, {"remove", "delete"},

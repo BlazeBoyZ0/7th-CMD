@@ -34,12 +34,34 @@ bool LinuxOperationExecutor::supports(
            request.operation == "search_files" ||
            request.operation == "rename_path" ||
            request.operation == "copy_file" ||
-           request.operation == "delete_path";
+           request.operation == "delete_path" ||
+           request.operation == "read_text";
 }
 
 execution::ExecutionResult LinuxOperationExecutor::execute(
     const execution::ExecutionRequest& request) {
     execution::ExecutionResult result;
+    if (request.operation == "read_text") {
+        const auto path = request.input_data.find("path");
+        if (path == request.input_data.end() || path->second.empty()) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "read_text requires a file path.";
+            return result;
+        }
+        std::string read_error;
+        const auto text = platform_.filesystem().read_text(path->second, read_error);
+        if (!text) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = read_error;
+            return result;
+        }
+        result.status = execution::ExecutionStatus::Success;
+        result.output_data["text"] = *text;
+        result.output_data["bytes"] = std::to_string(text->size());
+        result.output_data["path"] = path->second;
+        return result;
+    }
+
     if (request.operation == "delete_path") {
         const auto path = request.input_data.find("path");
         if (path == request.input_data.end() || path->second.empty()) {
