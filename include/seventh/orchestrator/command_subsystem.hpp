@@ -27,6 +27,10 @@ public:
 
 private:
     [[nodiscard]] std::string resolve_destination(const std::string& destination) const;
+    [[nodiscard]] SubsystemResult create_folder(
+        const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
+    [[nodiscard]] SubsystemResult open_target(
+        const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
 
     platform::PlatformInterface& platform_;
     grammar::GrammarEngine grammar_engine_;

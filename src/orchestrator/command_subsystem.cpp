@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace seventh {
 namespace {
@@ -29,6 +30,15 @@ SubsystemResult failure(const RequestId& id, std::string message) {
     return result;
 }
 
+SubsystemResult needs_choice(const RequestId& id, const std::string& kind) {
+    SubsystemResult result;
+    result.request_id = id;
+    result.status = SubsystemStatus::NeedsInformation;
+    result.missing_information.emplace_back(kind + " choice");
+    result.error = "More than one matching " + kind + " was found.";
+    return result;
+}
+
 } // namespace
 
 CommandSubsystem::CommandSubsystem(
@@ -45,6 +55,25 @@ CommandSubsystem::CommandSubsystem(
         create_folder.allowed_roots.emplace_back(home);
     }
     capabilities_.register_capability(std::move(create_folder));
+
+    capabilities::CapabilityDefinition open_folder;
+    open_folder.id = "filesystem.open_path";
+    open_folder.description = "Open a folder inside the user's home directory.";
+    open_folder.operations = {"open_path"};
+    open_folder.enabled = true;
+    open_folder.read_only = true;
+    if (const char* home = std::getenv("HOME")) {
+        open_folder.allowed_roots.emplace_back(home);
+    }
+    capabilities_.register_capability(std::move(open_folder));
+
+    capabilities::CapabilityDefinition launch_application;
+    launch_application.id = "application.launch";
+    launch_application.description = "Launch an installed desktop application.";
+    launch_application.operations = {"launch_application"};
+    launch_application.enabled = true;
+    launch_application.read_only = false;
+    capabilities_.register_capability(std::move(launch_application));
 
     execution_engine_.register_executor(
         std::make_shared<platform::linux_backend::LinuxOperationExecutor>(platform_));
@@ -73,31 +102,8 @@ std::string CommandSubsystem::resolve_destination(
     return (std::filesystem::path(home) / requested).lexically_normal().string();
 }
 
-SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
-    const auto raw = request.input_data.find("raw_input");
-    if (raw == request.input_data.end() || raw->second.empty()) {
-        SubsystemResult result;
-        result.request_id = request.request_id;
-        result.status = SubsystemStatus::NeedsInformation;
-        result.missing_information.emplace_back("instruction text");
-        return result;
-    }
-
-    const auto intent = grammar_engine_.interpret(raw->second);
-    if (!intent.valid) {
-        SubsystemResult result;
-        result.request_id = request.request_id;
-        result.status = intent.missing_information.empty()
-            ? SubsystemStatus::Failure : SubsystemStatus::NeedsInformation;
-        result.missing_information = intent.missing_information;
-        result.error = intent.error;
-        return result;
-    }
-
-    if (intent.operation != "create" || intent.entity_type != "folder") {
-        return failure(request.request_id,
-            "The first end-to-end workflow currently supports creating folders only.");
-    }
+SubsystemResult CommandSubsystem::create_folder(
+    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
     if (intent.destination.empty()) {
         SubsystemResult result;
         result.request_id = request.request_id;
@@ -130,13 +136,9 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     resolution_request.expected_type = entity_resolution::EntityType::Folder;
     resolution_request.context_hint = std::filesystem::path(destination_path).parent_path().string();
     resolution_request.candidates.push_back({
-        destination_path,
-        resolution_request.query,
-        entity_resolution::EntityType::Folder,
-        resolution_request.context_hint,
-        "linux.filesystem",
-        true,
-        0
+        destination_path, resolution_request.query,
+        entity_resolution::EntityType::Folder, resolution_request.context_hint,
+        "linux.filesystem", true, 0
     });
     const auto resolved = entity_resolver_.resolve(std::move(resolution_request));
     if (resolved.status != entity_resolution::ResolutionStatus::Found) {
@@ -216,8 +218,7 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     verification_request.expected["exists"] = "true";
     verification_request.actual["exists"] =
         platform_.filesystem().exists(target_path) ? "true" : "false";
-    const auto verified = verification_system_.verify(verification_request);
-    if (!verified.verified) {
+    if (!verification_system_.verify(verification_request).verified) {
         return failure(request.request_id,
             "The operation ran, but verification could not confirm the new folder.");
     }
@@ -232,6 +233,189 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     result.result_data["path"] = target_path;
     result.result_data["verified"] = "true";
     return result;
+}
+
+SubsystemResult CommandSubsystem::open_target(
+    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
+    std::string app_error;
+    const auto applications = platform_.applications().list(app_error);
+    entity_resolution::ResolutionRequest app_request;
+    app_request.query = intent.name;
+    app_request.expected_type = entity_resolution::EntityType::Application;
+    for (const auto& app : applications) {
+        app_request.candidates.push_back({
+            app.id, app.name, entity_resolution::EntityType::Application,
+            app.desktop_file, "linux.desktop", true, 0
+        });
+    }
+
+    auto app_match = entity_resolver_.resolve(app_request);
+    std::optional<platform::ApplicationEntry> selected_app;
+    if (app_match.status == entity_resolution::ResolutionStatus::Found) {
+        selected_app = platform_.applications().find(app_match.selected.id);
+    } else if (lower(intent.name) == "browser") {
+        selected_app = platform_.applications().find_default("browser");
+        if (selected_app) {
+            app_request.query = selected_app->name;
+            app_request.candidates = {{
+                selected_app->id, selected_app->name,
+                entity_resolution::EntityType::Application,
+                selected_app->desktop_file, "xdg.default", true, 0
+            }};
+            app_match = entity_resolver_.resolve(app_request);
+        }
+    }
+
+    std::string operation;
+    std::map<std::string, std::string> operation_data;
+    std::string capability_id;
+    std::string entity_type;
+    std::string resolved_name;
+
+    if (selected_app && app_match.status == entity_resolution::ResolutionStatus::Found) {
+        operation = "launch_application";
+        operation_data["application_id"] = selected_app->id;
+        capability_id = "application.launch";
+        entity_type = "application";
+        resolved_name = selected_app->name;
+    } else {
+        if (app_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+            return needs_choice(request.request_id, "application");
+        }
+
+        const char* home = std::getenv("HOME");
+        if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
+        const std::vector<std::filesystem::path> roots{
+            home,
+            std::filesystem::path(home) / "Desktop",
+            std::filesystem::path(home) / "Documents",
+            std::filesystem::path(home) / "Downloads"
+        };
+
+        entity_resolution::ResolutionRequest folder_request;
+        folder_request.query = intent.name;
+        folder_request.expected_type = entity_resolution::EntityType::Folder;
+        for (const auto& root : roots) {
+            std::string list_error;
+            const auto entries = platform_.filesystem().list(root.string(), list_error);
+            for (const auto& entry : entries) {
+                if (!entry.directory) continue;
+                folder_request.candidates.push_back({
+                    entry.path, entry.name, entity_resolution::EntityType::Folder,
+                    root.string(), "linux.filesystem", true, 0
+                });
+            }
+        }
+        const auto folder_match = entity_resolver_.resolve(std::move(folder_request));
+        if (folder_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+            return needs_choice(request.request_id, "folder");
+        }
+        if (folder_match.status != entity_resolution::ResolutionStatus::Found) {
+            return failure(request.request_id,
+                lower(intent.name) == "browser"
+                    ? "No default browser is configured on this system."
+                    : "No installed application or matching folder was found.");
+        }
+
+        operation = "open_path";
+        operation_data["path"] = folder_match.selected.id;
+        capability_id = "filesystem.open_path";
+        entity_type = "folder";
+        resolved_name = folder_match.selected.name;
+    }
+
+    planning::PlanningRequest planning_request;
+    planning_request.goal = "Open " + entity_type + " " + resolved_name;
+    planning::TaskDraft draft;
+    draft.id = "open-target";
+    draft.operation = operation;
+    draft.input_data = operation_data;
+    planning_request.tasks.push_back(std::move(draft));
+    auto plan = planning_engine_.create_plan(planning_request);
+    if (!plan.valid || plan.tasks.empty()) {
+        return failure(request.request_id, "Unable to create a valid open plan.");
+    }
+
+    permissions::PermissionRequest permission_request;
+    permission_request.capability_id = capability_id;
+    permission_request.operation = operation;
+    if (operation == "open_path") permission_request.resource_path = operation_data["path"];
+    const auto permission = permission_manager_.authorize(permission_request);
+    if (permission.decision != permissions::PermissionDecision::Allowed) {
+        SubsystemResult result;
+        result.request_id = request.request_id;
+        result.status = permission.decision ==
+            permissions::PermissionDecision::RequiresConfirmation
+                ? SubsystemStatus::NeedsPermission : SubsystemStatus::Failure;
+        result.error = permission.reason;
+        return result;
+    }
+
+    if (!plan_state_manager_.start(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The open task could not enter the running state.");
+    }
+
+    execution::ExecutionRequest execution_request;
+    execution_request.task_id = request.task_id;
+    execution_request.operation = operation;
+    execution_request.input_data = operation_data;
+    execution_request.requires_authorization = true;
+    execution_request.authorization_granted = true;
+    const auto executed = execution_engine_.execute(execution_request);
+    if (executed.status != execution::ExecutionStatus::Success) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        return failure(request.request_id, executed.error);
+    }
+    plan_state_manager_.complete(plan, plan.tasks.front().id);
+
+    verification::VerificationRequest verification_request;
+    verification_request.operation = operation;
+    verification_request.expected["started"] = "true";
+    verification_request.actual["started"] =
+        executed.output_data.contains("started") ? executed.output_data.at("started") : "false";
+    if (!verification_system_.verify(verification_request).verified) {
+        return failure(request.request_id, "The open request could not be verified.");
+    }
+
+    SubsystemResult result;
+    result.request_id = request.request_id;
+    result.status = SubsystemStatus::Success;
+    result.result_data["operation"] = "open";
+    result.result_data["entity_type"] = entity_type;
+    result.result_data["name"] = resolved_name;
+    if (operation == "open_path") result.result_data["path"] = operation_data["path"];
+    return result;
+}
+
+SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
+    const auto raw = request.input_data.find("raw_input");
+    if (raw == request.input_data.end() || raw->second.empty()) {
+        SubsystemResult result;
+        result.request_id = request.request_id;
+        result.status = SubsystemStatus::NeedsInformation;
+        result.missing_information.emplace_back("instruction text");
+        return result;
+    }
+
+    const auto intent = grammar_engine_.interpret(raw->second);
+    if (!intent.valid) {
+        SubsystemResult result;
+        result.request_id = request.request_id;
+        result.status = intent.missing_information.empty()
+            ? SubsystemStatus::Failure : SubsystemStatus::NeedsInformation;
+        result.missing_information = intent.missing_information;
+        result.error = intent.error;
+        return result;
+    }
+
+    if (intent.operation == "open" && intent.entity_type == "application") {
+        return open_target(request, intent);
+    }
+    if (intent.operation == "create" && intent.entity_type == "folder") {
+        return create_folder(request, intent);
+    }
+    return failure(request.request_id,
+        "The current end-to-end workflow supports folder creation and opening applications or folders.");
 }
 
 } // namespace seventh
