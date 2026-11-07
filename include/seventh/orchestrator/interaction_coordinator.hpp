@@ -1,6 +1,5 @@
 #pragma once
 
-#include "seventh/core/types.hpp"
 #include "seventh/systems/knowledge/clarification_manager.hpp"
 
 namespace seventh {

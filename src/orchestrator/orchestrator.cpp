@@ -43,7 +43,14 @@ TaskOutcome Orchestrator::execute(
         return outcome;
     }
 
-    task_states_.transition(request.task_id, TaskState::Routing);
+    if (!task_states_.transition(request.task_id, TaskState::Routing)) {
+        outcome.result.status = SubsystemStatus::Failure;
+        outcome.result.error = "Unable to enter the routing state.";
+        task_states_.transition(request.task_id, TaskState::Failed);
+        outcome.state = task_states_.state_of(request.task_id);
+        return outcome;
+    }
+
     const auto subsystem = router_.route(subsystems_, request);
     if (!subsystem) {
         outcome.result.status = SubsystemStatus::Failure;
@@ -55,13 +62,23 @@ TaskOutcome Orchestrator::execute(
     }
 
     outcome.subsystem_id = std::string(subsystem->id());
-    task_states_.transition(request.task_id, TaskState::Processing);
+    if (!task_states_.transition(request.task_id, TaskState::Processing)) {
+        outcome.result.status = SubsystemStatus::Failure;
+        outcome.result.error = "Unable to enter the processing state.";
+        task_states_.transition(request.task_id, TaskState::Failed);
+        outcome.state = task_states_.state_of(request.task_id);
+        return outcome;
+    }
+
     outcome.result = result_handler_.normalize(
         dispatcher_.dispatch(*subsystem, request), request.request_id);
 
     const auto next = workflow_.next_state(outcome.result);
-    task_states_.transition(request.task_id, next);
-    if (next == TaskState::WaitingForUser) {
+    if (!task_states_.transition(request.task_id, next)) {
+        outcome.result.status = SubsystemStatus::Failure;
+        outcome.result.error = "The workflow requested an invalid task-state transition.";
+        task_states_.transition(request.task_id, TaskState::Failed);
+    } else if (next == TaskState::WaitingForUser) {
         interactions_.request_missing_information(
             request.task_id, outcome.result.missing_information);
     }
@@ -80,8 +97,12 @@ bool Orchestrator::cancel(const TaskId& task_id) {
     return cancelled;
 }
 
-bool Orchestrator::resume(const TaskId& task_id) {
-    return pause_resume_.resume(task_states_, task_id);
+bool Orchestrator::resume(const TaskId& task_id, bool permission_granted) {
+    if (task_states_.state_of(task_id) == TaskState::WaitingForUser &&
+        interactions_.next_question(task_id).has_value()) {
+        return false;
+    }
+    return pause_resume_.resume(task_states_, task_id, permission_granted);
 }
 
 std::optional<knowledge::ClarificationRequest> Orchestrator::next_question(
