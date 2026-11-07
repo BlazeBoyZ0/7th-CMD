@@ -1,4 +1,4 @@
-name: Linux Build
+name: Linux Build and Resource Checks
 
 on:
   push:
@@ -25,14 +25,21 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
-      - name: Build Debian package
-        working-directory: build
-        run: cpack -G DEB
+      - name: Measure executable and installed size
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable_bytes="$(stat -c '%s' build/7thcmd)"
+          install_root="$RUNNER_TEMP/7thcmd-install"
+          cmake --install build --prefix "$install_root"
+          installed_bytes="$(du -sb "$install_root" | cut -f1)"
+          echo "Executable size: $executable_bytes bytes"
+          echo "Installed tree size: $installed_bytes bytes"
+          {
+            echo "### Build size"
+            echo "- Executable: $executable_bytes bytes"
+            echo "- Installed tree: $installed_bytes bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Debian package
-        uses: actions/upload-artifact@v4
-        with:
-          name: 7thcmd-v0-1-0-deb
-          path: build/7thcmd-v0-1-0.deb
-          if-no-files-found: error
-          retention-days: 7
+      - name: Measure runtime memory
+        run: python3 .github/scripts/measure_runtime.py build/7thcmd

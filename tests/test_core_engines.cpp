@@ -253,6 +253,7 @@ int main() {
     test_rule_inference();
     test_planning_dependencies();
     test_permission_boundaries();
+    test_task_lifecycle();
 
     if (failures != 0) {
         std::cerr << failures << " test(s) failed.\n";
