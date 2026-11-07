@@ -1,4 +1,19 @@
 {
   "schema_version": 1,
-  "subsystems": []
+  "subsystems": [
+    {
+      "id": "grammar",
+      "enabled": true,
+      "priority": 10,
+      "handles": ["interpret"],
+      "requires": []
+    },
+    {
+      "id": "command",
+      "enabled": true,
+      "priority": 20,
+      "handles": ["command"],
+      "requires": []
+    }
+  ]
 }

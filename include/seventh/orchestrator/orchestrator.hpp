@@ -31,6 +31,8 @@ struct TaskOutcome {
 class Orchestrator {
 public:
     void register_subsystem(std::shared_ptr<Subsystem> subsystem);
+    bool load_subsystem_profiles(const std::string& path, std::string& error,
+                                 bool merge = false);
 
     [[nodiscard]] TaskOutcome execute(
         const std::string& operation,

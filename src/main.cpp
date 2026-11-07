@@ -60,6 +60,34 @@ int main(int argc, char* argv[]) {
 
     seventh::platform::linux_backend::LinuxPlatform platform;
     seventh::Orchestrator orchestrator;
+    const std::vector<std::filesystem::path> packaged_subsystem_profiles{
+        "config/subsystem_profiles.json",
+        "/usr/local/share/7thcmd/config/subsystem_profiles.json",
+        "/usr/share/7thcmd/config/subsystem_profiles.json"
+    };
+    for (const auto& path : packaged_subsystem_profiles) {
+        std::error_code path_error;
+        if (!std::filesystem::is_regular_file(path, path_error) || path_error) continue;
+        std::string profile_error;
+        if (!orchestrator.load_subsystem_profiles(path.string(), profile_error)) {
+            logger.write(seventh::utilities::LogLevel::Warning,
+                         "Subsystem profiles were not loaded: " + profile_error);
+        }
+        break;
+    }
+    if (const char* home = std::getenv("HOME")) {
+        const auto user_profiles =
+            std::filesystem::path(home) / ".config/7thcmd/subsystem_profiles.json";
+        std::error_code path_error;
+        if (std::filesystem::is_regular_file(user_profiles, path_error) && !path_error) {
+            std::string profile_error;
+            if (!orchestrator.load_subsystem_profiles(
+                    user_profiles.string(), profile_error, true)) {
+                logger.write(seventh::utilities::LogLevel::Warning,
+                             "User subsystem profiles were not loaded: " + profile_error);
+            }
+        }
+    }
     if (const char* home = std::getenv("HOME")) {
         const auto knowledge_path =
             (std::filesystem::path(home) / ".config/7thcmd/knowledge.json").string();

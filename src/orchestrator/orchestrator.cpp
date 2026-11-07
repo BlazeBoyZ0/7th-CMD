@@ -5,6 +5,11 @@
 
 namespace seventh {
 
+bool Orchestrator::load_subsystem_profiles(const std::string& path,
+                                           std::string& error, bool merge) {
+    return router_.load_profiles(path, error, merge);
+}
+
 void Orchestrator::register_subsystem(std::shared_ptr<Subsystem> subsystem) {
     if (!subsystem || subsystem->id().empty()) return;
     for (auto& registered : subsystems_) {
