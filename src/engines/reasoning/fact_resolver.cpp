@@ -13,15 +13,12 @@ FactResolution FactResolver::resolve(const FactQuery& query,
             fact.property != query.property) {
             continue;
         }
-        if (query.match_value && fact.value != query.value) {
-            saw_false = true;
-            continue;
-        }
         result.matches.push_back(fact);
         if (!query.match_value || fact.value == query.value) saw_true = true;
+        else saw_false = true;
     }
 
-    result.contradiction = saw_true && saw_false;
+    result.contradiction = query.match_value && saw_true && saw_false;
     if (result.contradiction) result.truth = TruthValue::Unknown;
     else if (saw_true) result.truth = TruthValue::True;
     else if (saw_false) result.truth = TruthValue::False;
