@@ -48,6 +48,10 @@ add_executable(7thcmd
     src/engines/planning/plan_validator.cpp
     src/engines/planning/planning_engine.cpp
     src/engines/planning/task_breakdown.cpp
+    src/engines/execution/action_dispatcher.cpp
+    src/engines/execution/execution_engine.cpp
+    src/engines/execution/execution_tracker.cpp
+    src/engines/execution/operation_executor.cpp
     src/orchestrator/orchestrator.cpp
 )
 
