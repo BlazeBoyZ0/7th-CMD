@@ -13,6 +13,8 @@
 #include "seventh/systems/permissions/permission_manager.hpp"
 #include "seventh/systems/verification/verification_system.hpp"
 
+#include <map>
+
 namespace seventh {
 
 class CommandSubsystem final : public Subsystem {
@@ -39,6 +41,10 @@ private:
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
     [[nodiscard]] SubsystemResult count_file(
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
+    [[nodiscard]] SubsystemResult create_folder_chain(
+        const SubsystemRequest& request, const std::vector<std::string>& clauses);
+    [[nodiscard]] SubsystemResult handle_single(
+        const SubsystemRequest& request, const std::string& raw_input);
 
     platform::PlatformInterface& platform_;
     grammar::GrammarEngine grammar_engine_;
@@ -50,6 +56,7 @@ private:
     permissions::PermissionManager permission_manager_;
     execution::ExecutionEngine execution_engine_;
     verification::VerificationSystem verification_system_;
+    std::map<std::string, std::string> session_paths_;
 };
 
 } // namespace seventh

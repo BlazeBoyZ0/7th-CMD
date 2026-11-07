@@ -40,6 +40,23 @@ SubsystemResult needs_choice(const RequestId& id, const std::string& kind) {
     result.error = "More than one matching " + kind + " was found.";
     return result;
 }
+std::vector<std::string> split_instruction_chain(const std::string& input) {
+    const auto lowered = lower(input);
+    const std::string delimiter = lowered.find(" and then ") != std::string::npos
+        ? " and then " : " then ";
+    std::vector<std::string> clauses;
+    std::size_t start = 0;
+    while (true) {
+        const auto position = lowered.find(delimiter, start);
+        if (position == std::string::npos) break;
+        const auto clause = input.substr(start, position - start);
+        if (!clause.empty()) clauses.push_back(clause);
+        start = position + delimiter.size();
+    }
+    const auto final_clause = input.substr(start);
+    if (!final_clause.empty()) clauses.push_back(final_clause);
+    return clauses;
+}
 
 } // namespace
 
@@ -150,6 +167,9 @@ std::string CommandSubsystem::resolve_destination(
     const std::string& destination) const {
     const char* home = std::getenv("HOME");
     if (!home || destination.empty()) return {};
+
+    const auto remembered = session_paths_.find(destination);
+    if (remembered != session_paths_.end()) return remembered->second;
 
     const std::filesystem::path requested(destination);
     if (requested.is_absolute()) return requested.lexically_normal().string();
@@ -290,6 +310,7 @@ SubsystemResult CommandSubsystem::create_folder(
     result.result_data["destination"] = destination_path;
     result.result_data["path"] = target_path;
     result.result_data["verified"] = "true";
+    session_paths_[intent.name] = target_path;
     return result;
 }
 
@@ -998,9 +1019,165 @@ SubsystemResult CommandSubsystem::count_file(
     return result;
 }
 
-SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
-    const auto raw = request.input_data.find("raw_input");
-    if (raw == request.input_data.end() || raw->second.empty()) {
+
+SubsystemResult CommandSubsystem::create_folder_chain(
+    const SubsystemRequest& request, const std::vector<std::string>& clauses) {
+    if (clauses.size() < 2) return handle_single(request, clauses.front());
+
+    planning::PlanningRequest planning_request;
+    planning_request.goal = "Execute a dependent folder-creation sequence";
+    std::map<std::string, std::string> local_paths;
+    std::vector<std::string> target_paths;
+    std::vector<std::string> folder_names;
+    target_paths.reserve(clauses.size());
+    folder_names.reserve(clauses.size());
+
+    for (std::size_t index = 0; index < clauses.size(); ++index) {
+        const auto intent = grammar_engine_.interpret(clauses[index]);
+        if (!intent.valid || intent.operation != "create" ||
+            intent.entity_type != "folder") {
+            return failure(request.request_id,
+                "Multi-step v0.1 currently supports dependent folder-creation sequences only.");
+        }
+        const std::filesystem::path folder_name(intent.name);
+        if (folder_name.empty() || folder_name.is_absolute() ||
+            folder_name.has_parent_path() || intent.name == "." || intent.name == "..") {
+            return failure(request.request_id, "A folder name must be a single path component.");
+        }
+        if (intent.destination.empty()) {
+            return failure(request.request_id, "Every folder-creation step needs a destination.");
+        }
+        if (local_paths.contains(intent.name)) {
+            return failure(request.request_id,
+                "A folder name is repeated in the same sequence; use distinct names.");
+        }
+
+        std::string destination;
+        const auto local = local_paths.find(intent.destination);
+        if (local != local_paths.end()) destination = local->second;
+        else destination = resolve_destination(intent.destination);
+
+        std::error_code ec;
+        if (destination.empty() || !std::filesystem::is_directory(destination, ec) || ec) {
+            return failure(request.request_id,
+                "A folder destination does not exist or could not be resolved.");
+        }
+
+        entity_resolution::ResolutionRequest resolution_request;
+        resolution_request.query = std::filesystem::path(destination).filename().string();
+        resolution_request.expected_type = entity_resolution::EntityType::Folder;
+        resolution_request.context_hint = std::filesystem::path(destination).parent_path().string();
+        resolution_request.candidates.push_back({
+            destination, resolution_request.query,
+            entity_resolution::EntityType::Folder, resolution_request.context_hint,
+            "linux.filesystem", true, 0
+        });
+        const auto resolved = entity_resolver_.resolve(std::move(resolution_request));
+        if (resolved.status != entity_resolution::ResolutionStatus::Found) {
+            return failure(request.request_id, "A folder destination could not be resolved uniquely.");
+        }
+
+        const auto target = (std::filesystem::path(resolved.selected.id) / folder_name)
+            .lexically_normal().string();
+
+        reasoning::Fact fact;
+        fact.subject = target;
+        fact.property = "exists";
+        fact.value = platform_.filesystem().exists(target) ? "true" : "false";
+        fact.source = "linux.filesystem";
+        fact.confidence = 100;
+        fact.fresh = true;
+        reasoning::ReasoningRequest reasoning_request;
+        reasoning_request.query = {target, "exists", "false", true};
+        reasoning_request.facts.push_back(std::move(fact));
+        const auto reasoning_result = reasoning_engine_.evaluate(reasoning_request);
+        if (reasoning_result.truth != TruthValue::True) {
+            return failure(request.request_id,
+                "A target folder already exists or its state could not be determined.");
+        }
+
+        permissions::PermissionRequest permission_request;
+        permission_request.capability_id = "filesystem.create_directory";
+        permission_request.operation = "create_directory";
+        permission_request.resource_path = target;
+        const auto permission = permission_manager_.authorize(permission_request);
+        if (permission.decision != permissions::PermissionDecision::Allowed) {
+            return failure(request.request_id, permission.reason);
+        }
+
+        planning::TaskDraft draft;
+        draft.id = "folder-step-" + std::to_string(index + 1);
+        draft.operation = "create_directory";
+        draft.input_data["path"] = target;
+        if (index > 0) draft.dependencies.push_back("folder-step-" + std::to_string(index));
+        planning_request.tasks.push_back(std::move(draft));
+
+        local_paths[intent.name] = target;
+        target_paths.push_back(target);
+        folder_names.push_back(intent.name);
+    }
+
+    auto plan = planning_engine_.create_plan(planning_request);
+    if (!plan.valid || plan.tasks.size() != clauses.size()) {
+        return failure(request.request_id, "The multi-step folder plan could not be validated.");
+    }
+
+    std::size_t completed = 0;
+    for (std::size_t index = 0; index < plan.tasks.size(); ++index) {
+        auto& task = plan.tasks[index];
+        if (!plan_state_manager_.start(plan, task.id)) {
+            return failure(request.request_id, "A dependent folder task could not start.");
+        }
+
+        execution::ExecutionRequest execution_request;
+        execution_request.task_id = request.task_id + "-chain-" + std::to_string(index + 1);
+        execution_request.operation = task.operation;
+        execution_request.input_data = task.input_data;
+        execution_request.requires_authorization = true;
+        execution_request.authorization_granted = true;
+        const auto executed = execution_engine_.execute(execution_request);
+        if (executed.status != execution::ExecutionStatus::Success) {
+            plan_state_manager_.fail(plan, task.id);
+            auto result = failure(request.request_id, executed.error);
+            result.result_data["completed_steps"] = std::to_string(completed);
+            result.result_data["total_steps"] = std::to_string(clauses.size());
+            return result;
+        }
+
+        verification::VerificationRequest verification_request;
+        verification_request.operation = "create_directory";
+        verification_request.expected["exists"] = "true";
+        verification_request.actual["exists"] =
+            platform_.filesystem().exists(target_paths[index]) ? "true" : "false";
+        if (!verification_system_.verify(verification_request).verified) {
+            plan_state_manager_.fail(plan, task.id);
+            auto result = failure(request.request_id,
+                "A folder was created but its verification did not pass.");
+            result.result_data["completed_steps"] = std::to_string(completed);
+            result.result_data["total_steps"] = std::to_string(clauses.size());
+            return result;
+        }
+
+        plan_state_manager_.complete(plan, task.id);
+        session_paths_[folder_names[index]] = target_paths[index];
+        ++completed;
+    }
+
+    SubsystemResult result;
+    result.request_id = request.request_id;
+    result.status = SubsystemStatus::Success;
+    result.result_data["operation"] = "create_chain";
+    result.result_data["entity_type"] = "folder";
+    result.result_data["count"] = std::to_string(completed);
+    result.result_data["paths"] = utilities::join(target_paths, "\n");
+    result.result_data["path"] = target_paths.back();
+    result.result_data["name"] = folder_names.back();
+    result.result_data["verified"] = "true";
+    return result;
+}
+
+SubsystemResult CommandSubsystem::handle_single(const SubsystemRequest& request, const std::string& raw_input) {
+    if (raw_input.empty()) {
         SubsystemResult result;
         result.request_id = request.request_id;
         result.status = SubsystemStatus::NeedsInformation;
@@ -1008,7 +1185,7 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         return result;
     }
 
-    const auto intent = grammar_engine_.interpret(raw->second);
+    const auto intent = grammar_engine_.interpret(raw_input);
     if (!intent.valid) {
         SubsystemResult result;
         result.request_id = request.request_id;
@@ -1041,6 +1218,21 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     }
     return failure(request.request_id,
         "The current end-to-end workflow supports folder creation, opening applications or folders, scoped directory searches, rename, move, file copy, confirmed deletion of files or empty folders, and text-file counts.");
+}
+
+
+SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
+    const auto raw = request.input_data.find("raw_input");
+    if (raw == request.input_data.end() || raw->second.empty()) {
+        SubsystemResult result;
+        result.request_id = request.request_id;
+        result.status = SubsystemStatus::NeedsInformation;
+        result.missing_information.emplace_back("instruction text");
+        return result;
+    }
+    const auto clauses = split_instruction_chain(raw->second);
+    if (clauses.size() > 1) return create_folder_chain(request, clauses);
+    return handle_single(request, raw->second);
 }
 
 } // namespace seventh
