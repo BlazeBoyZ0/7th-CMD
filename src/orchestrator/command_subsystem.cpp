@@ -535,17 +535,28 @@ SubsystemResult CommandSubsystem::modify_path(
     }
 
     const std::filesystem::path source_as_path(intent.source);
-    if (source_as_path.is_absolute() && platform_.filesystem().exists(intent.source)) {
+    std::filesystem::path resolved_source;
+    if (source_as_path.is_absolute()) {
+        resolved_source = source_as_path;
+    } else {
+        const auto home_relative = std::filesystem::path(home) / source_as_path;
+        if (platform_.filesystem().exists(home_relative.string())) {
+            resolved_source = home_relative;
+        }
+    }
+
+    if (!resolved_source.empty() && platform_.filesystem().exists(resolved_source.string())) {
+        source_request.query = resolved_source.filename().string();
         std::error_code type_error;
-        const bool is_directory = std::filesystem::is_directory(source_as_path, type_error);
+        const bool is_directory = std::filesystem::is_directory(resolved_source, type_error);
         if (!type_error) {
             const auto type = is_directory ? entity_resolution::EntityType::Folder
                                            : entity_resolution::EntityType::File;
             if (source_request.expected_type == entity_resolution::EntityType::Unknown ||
                 source_request.expected_type == type) {
                 source_request.candidates.push_back({
-                    intent.source, source_as_path.filename().string(), type,
-                    source_as_path.parent_path().string(), "linux.filesystem", true, 0
+                    resolved_source.string(), resolved_source.filename().string(), type,
+                    resolved_source.parent_path().string(), "linux.filesystem", true, 0
                 });
             }
         }
@@ -718,7 +729,7 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         return modify_path(request, intent);
     }
     return failure(request.request_id,
-        "The current end-to-end workflow supports folder creation, opening applications or folders, and scoped directory searches.");
+        "The current end-to-end workflow supports folder creation, opening applications or folders, scoped directory searches, and basic rename, move, and file-copy operations.");
 }
 
 } // namespace seventh
