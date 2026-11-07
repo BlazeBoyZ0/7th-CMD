@@ -28,27 +28,39 @@ TaskOutcome Orchestrator::execute(
     outcome.result.request_id = request.request_id;
     task_states_.create(request.task_id);
 
+    auto& task_context = contexts_.create(request.task_id);
+    task_context.values["operation"] = operation;
+    for (const auto& [key, value] : request.input_data) {
+        task_context.values["input." + key] = value;
+    }
+    for (const auto& [key, value] : request.context) {
+        task_context.values["context." + key] = value;
+    }
+
+    const auto finish = [this, &outcome]() {
+        outcome.state = task_states_.state_of(outcome.task_id);
+        record_context(outcome);
+        return outcome;
+    };
+
     if (!task_states_.transition(request.task_id, TaskState::Understanding)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "Unable to enter the understanding state.";
-        outcome.state = task_states_.state_of(request.task_id);
-        return outcome;
+        return finish();
     }
 
     if (!request.valid()) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The orchestrator received an incomplete subsystem request.";
         task_states_.transition(request.task_id, TaskState::Failed);
-        outcome.state = task_states_.state_of(request.task_id);
-        return outcome;
+        return finish();
     }
 
     if (!task_states_.transition(request.task_id, TaskState::Routing)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "Unable to enter the routing state.";
         task_states_.transition(request.task_id, TaskState::Failed);
-        outcome.state = task_states_.state_of(request.task_id);
-        return outcome;
+        return finish();
     }
 
     const auto subsystem = router_.route(subsystems_, request);
@@ -57,8 +69,7 @@ TaskOutcome Orchestrator::execute(
         outcome.result.error = "No registered subsystem can handle operation '" +
                                operation + "'.";
         task_states_.transition(request.task_id, TaskState::Failed);
-        outcome.state = task_states_.state_of(request.task_id);
-        return outcome;
+        return finish();
     }
 
     outcome.subsystem_id = std::string(subsystem->id());
@@ -66,8 +77,7 @@ TaskOutcome Orchestrator::execute(
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "Unable to enter the processing state.";
         task_states_.transition(request.task_id, TaskState::Failed);
-        outcome.state = task_states_.state_of(request.task_id);
-        return outcome;
+        return finish();
     }
 
     outcome.result = result_handler_.normalize(
@@ -83,8 +93,41 @@ TaskOutcome Orchestrator::execute(
             request.task_id, outcome.result.missing_information);
     }
 
-    outcome.state = task_states_.state_of(request.task_id);
-    return outcome;
+    return finish();
+}
+
+void Orchestrator::record_context(const TaskOutcome& outcome) {
+    auto* context = contexts_.find(outcome.task_id);
+    if (!context) return;
+
+    context->values["task.state"] =
+        std::to_string(static_cast<unsigned int>(outcome.state));
+    context->values["task.subsystem"] = outcome.subsystem_id;
+    context->values["result.status"] =
+        std::string(to_string(outcome.result.status));
+    context->values["result.error"] = outcome.result.error;
+    context->unresolved_information = outcome.result.missing_information;
+
+    for (const auto& [key, value] : outcome.result.result_data) {
+        context->values["result." + key] = value;
+    }
+}
+
+knowledge::KnowledgeSystem& Orchestrator::knowledge() noexcept {
+    return knowledge_;
+}
+
+const knowledge::KnowledgeSystem& Orchestrator::knowledge() const noexcept {
+    return knowledge_;
+}
+
+const knowledge::TaskContext* Orchestrator::context_of(
+    const TaskId& task_id) const {
+    return contexts_.find(task_id);
+}
+
+bool Orchestrator::clear_context(const TaskId& task_id) {
+    return contexts_.erase(task_id);
 }
 
 TaskState Orchestrator::state_of(const TaskId& task_id) const {

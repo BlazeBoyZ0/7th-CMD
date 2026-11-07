@@ -9,6 +9,8 @@
 #include "seventh/orchestrator/subsystem_router.hpp"
 #include "seventh/orchestrator/task_state_manager.hpp"
 #include "seventh/orchestrator/workflow_controller.hpp"
+#include "seventh/systems/knowledge/context_manager.hpp"
+#include "seventh/systems/knowledge/knowledge_system.hpp"
 
 #include <memory>
 #include <string>
@@ -40,7 +42,14 @@ public:
         const TaskId& task_id) const;
     bool resolve_question(const TaskId& task_id, const std::string& field);
 
+    [[nodiscard]] knowledge::KnowledgeSystem& knowledge() noexcept;
+    [[nodiscard]] const knowledge::KnowledgeSystem& knowledge() const noexcept;
+    [[nodiscard]] const knowledge::TaskContext* context_of(
+        const TaskId& task_id) const;
+    bool clear_context(const TaskId& task_id);
+
 private:
+    void record_context(const TaskOutcome& outcome);
     std::vector<std::shared_ptr<Subsystem>> subsystems_;
     RequestManager request_manager_;
     SubsystemRouter router_;
@@ -51,6 +60,8 @@ private:
     InteractionCoordinator interactions_;
     CancellationHandler cancellation_;
     PauseResumeManager pause_resume_;
+    knowledge::KnowledgeSystem knowledge_;
+    knowledge::ContextManager contexts_;
 };
 
 } // namespace seventh

@@ -10,6 +10,8 @@
 #include "seventh/utilities/logger.hpp"
 
 #include <array>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -57,6 +59,16 @@ int main(int argc, char* argv[]) {
 
     seventh::platform::linux_backend::LinuxPlatform platform;
     seventh::Orchestrator orchestrator;
+    if (const char* home = std::getenv("HOME")) {
+        const auto knowledge_path =
+            (std::filesystem::path(home) / ".config/7thcmd/knowledge.json").string();
+        std::string knowledge_error;
+        if (!orchestrator.knowledge().load_from_file(
+                knowledge_path, knowledge_error)) {
+            logger.write(seventh::utilities::LogLevel::Warning,
+                         "Knowledge file was not loaded: " + knowledge_error);
+        }
+    }
     orchestrator.register_subsystem(
         std::make_shared<seventh::grammar::GrammarSubsystem>(grammar_config));
     orchestrator.register_subsystem(
