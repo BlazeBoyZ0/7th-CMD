@@ -5,6 +5,8 @@
 #include "seventh/engines/grammar/grammar_parser.hpp"
 #include "seventh/engines/grammar/semantic_analyzer.hpp"
 
+#include <utility>
+
 namespace seventh::grammar {
 
 CanonicalIntent GrammarEngine::interpret(const std::string& input) const {

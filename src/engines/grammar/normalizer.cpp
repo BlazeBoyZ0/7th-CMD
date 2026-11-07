@@ -18,7 +18,8 @@ std::string Normalizer::normalize(const std::string& input) const {
             continue;
         }
 
-        output += static_cast<char>(std::tolower(character));
+        // Preserve letter case: names and paths must retain the user's spelling.
+        output += static_cast<char>(character);
         previous_was_space = false;
     }
 

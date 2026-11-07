@@ -1,19 +1,28 @@
 #include "seventh/engines/grammar/cir_generator.hpp"
 
-#include <algorithm>
+#include <cctype>
 
 namespace seventh::grammar {
 namespace {
 
+std::string lower(std::string value) {
+    for (char& character : value) {
+        character = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(character)));
+    }
+    return value;
+}
+
 bool is_article(const std::string& token) {
-    return token == "a" || token == "an" || token == "the";
+    const auto value = lower(token);
+    return value == "a" || value == "an" || value == "the";
 }
 
 std::size_t find_token(const std::vector<std::string>& tokens,
                        const std::string& value,
                        std::size_t start = 0) {
     for (std::size_t index = start; index < tokens.size(); ++index) {
-        if (tokens[index] == value) return index;
+        if (lower(tokens[index]) == value) return index;
     }
     return tokens.size();
 }
@@ -50,7 +59,7 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
     }
 
     if (node.operation == "create") {
-        if (target_start < tokens.size() && tokens[target_start] == "named") {
+        if (target_start < tokens.size() && lower(tokens[target_start]) == "named") {
             ++target_start;
         }
         auto end = find_token(tokens, "on", target_start);
@@ -60,15 +69,9 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
         if (end < tokens.size() && end + 1 < tokens.size()) {
             intent.destination = join(tokens, end + 1, tokens.size());
         }
-    } else if (node.operation == "rename") {
-        auto separator = find_token(tokens, "to", target_start);
-        if (separator < tokens.size()) {
-            intent.source = join(tokens, target_start, separator);
-            intent.destination = join(tokens, separator + 1, tokens.size());
-            intent.name = intent.source;
-        }
-    } else if (node.operation == "move" || node.operation == "copy") {
-        auto separator = find_token(tokens, "to", target_start);
+    } else if (node.operation == "rename" || node.operation == "move" ||
+               node.operation == "copy") {
+        const auto separator = find_token(tokens, "to", target_start);
         if (separator < tokens.size()) {
             intent.source = join(tokens, target_start, separator);
             intent.destination = join(tokens, separator + 1, tokens.size());

@@ -1,13 +1,24 @@
 #include "seventh/engines/grammar/grammar_parser.hpp"
 
-#include <algorithm>
 #include <array>
+#include <cctype>
 
 namespace seventh::grammar {
 namespace {
 
+std::string lower(std::string value) {
+    for (char& character : value) {
+        character = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(character)));
+    }
+    return value;
+}
+
 bool contains(const std::vector<std::string>& tokens, const std::string& word) {
-    return std::find(tokens.begin(), tokens.end(), word) != tokens.end();
+    for (const auto& token : tokens) {
+        if (lower(token) == word) return true;
+    }
+    return false;
 }
 
 std::string identify_entity(const std::vector<std::string>& tokens) {
@@ -35,7 +46,7 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const {
         return match;
     }
 
-    const auto& first = tokens.front();
+    const auto first = lower(tokens.front());
     if (first == "create" || first == "make") {
         match.operation = "create";
     } else if (first == "rename") {
@@ -57,13 +68,7 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const {
 
     match.entity_type = identify_entity(tokens);
     if (match.entity_type.empty()) {
-        if (match.operation == "open") {
-            match.entity_type = "application";
-        } else if (match.operation == "search") {
-            match.entity_type = "item";
-        } else {
-            match.entity_type = "item";
-        }
+        match.entity_type = match.operation == "open" ? "application" : "item";
     }
 
     match.recognized = true;
