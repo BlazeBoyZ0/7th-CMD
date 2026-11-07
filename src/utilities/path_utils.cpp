@@ -9,7 +9,7 @@ std::string normalize_path(const std::string& path) {
     return fs::path(path).lexically_normal().string();
 }
 
-bool is_absolute_path(const std::string& path) noexcept {
+bool is_absolute_path(const std::string& path) {
     return !path.empty() && fs::path(path).is_absolute();
 }
 

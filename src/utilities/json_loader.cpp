@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
-#include <sstream>
+#include <utility>
 
 namespace seventh::utilities {
 namespace {
@@ -38,15 +38,11 @@ private:
     void skip_space() {
         while (position_ < input_.size() &&
                (input_[position_] == ' ' || input_[position_] == '\t' ||
-                input_[position_] == '\r' || input_[position_] == '\n')) {
-            ++position_;
-        }
+                input_[position_] == '\r' || input_[position_] == '\n')) ++position_;
     }
 
     void fail(const std::string& message) {
-        if (error_.empty()) {
-            error_ = message + " At byte " + std::to_string(position_) + ".";
-        }
+        if (error_.empty()) error_ = message + " At byte " + std::to_string(position_) + ".";
     }
 
     bool consume(char expected) {
@@ -107,7 +103,10 @@ private:
     }
 
     std::optional<std::string> parse_string() {
-        if (!consume('"')) return std::nullopt;
+        if (!consume('"')) {
+            fail("Expected a JSON string.");
+            return std::nullopt;
+        }
         std::string output;
         while (position_ < input_.size()) {
             const unsigned char ch = static_cast<unsigned char>(input_[position_++]);
@@ -275,12 +274,8 @@ JsonValue::JsonValue(Object value) : value_(std::move(value)) {}
 bool JsonValue::is_null() const noexcept {
     return std::holds_alternative<std::nullptr_t>(value_);
 }
-const bool* JsonValue::as_bool() const noexcept {
-    return std::get_if<bool>(&value_);
-}
-const double* JsonValue::as_number() const noexcept {
-    return std::get_if<double>(&value_);
-}
+const bool* JsonValue::as_bool() const noexcept { return std::get_if<bool>(&value_); }
+const double* JsonValue::as_number() const noexcept { return std::get_if<double>(&value_); }
 const std::string* JsonValue::as_string() const noexcept {
     return std::get_if<std::string>(&value_);
 }
@@ -311,7 +306,8 @@ std::optional<JsonValue> JsonLoader::load_file(
         return std::nullopt;
     }
     input.seekg(0, std::ios::beg);
-    std::string contents(std::istreambuf_iterator<char>(input), {});
+    std::string contents{std::istreambuf_iterator<char>(input),
+                         std::istreambuf_iterator<char>()};
     return parse(contents, error);
 }
 
