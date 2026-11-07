@@ -67,6 +67,12 @@ add_executable(7thcmd
     src/systems/information/provider_registry.cpp
     src/systems/information/result_builder.cpp
     src/systems/information/type_system.cpp
+    src/systems/entity_resolution/ambiguity_detector.cpp
+    src/systems/entity_resolution/candidate_discovery.cpp
+    src/systems/entity_resolution/context_resolver.cpp
+    src/systems/entity_resolution/entity_classifier.cpp
+    src/systems/entity_resolution/entity_matcher.cpp
+    src/systems/entity_resolution/entity_resolver.cpp
     src/orchestrator/orchestrator.cpp
 )
 
