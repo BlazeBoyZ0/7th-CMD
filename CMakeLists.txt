@@ -29,6 +29,7 @@ add_executable(7thcmd
     src/engines/grammar/normalizer.cpp
     src/engines/grammar/input_processor.cpp
     src/engines/grammar/grammar_parser.cpp
+    src/engines/grammar/grammar_config.cpp
     src/engines/grammar/ast_generator.cpp
     src/engines/grammar/semantic_analyzer.cpp
     src/engines/grammar/cir_generator.cpp
@@ -116,6 +117,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 install(TARGETS 7thcmd RUNTIME DESTINATION bin)
+install(DIRECTORY config/ DESTINATION share/7thcmd/config)
 
 if(SEVENTH_CMD_BUILD_TESTS)
     include(CTest)

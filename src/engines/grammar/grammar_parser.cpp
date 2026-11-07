@@ -1,6 +1,6 @@
 #include "seventh/engines/grammar/grammar_parser.hpp"
 
-#include <array>
+#include <algorithm>
 #include <cctype>
 
 namespace seventh::grammar {
@@ -14,30 +14,14 @@ std::string lower(std::string value) {
     return value;
 }
 
-bool contains(const std::vector<std::string>& tokens, const std::string& word) {
-    for (const auto& token : tokens) {
-        if (lower(token) == word) return true;
-    }
-    return false;
-}
-
-std::string identify_entity(const std::vector<std::string>& tokens) {
-    constexpr std::array<const char*, 7> entities{
-        "folder", "directory", "file", "application", "app", "process", "item"
-    };
-    for (const auto* entity : entities) {
-        if (contains(tokens, entity)) {
-            if (std::string(entity) == "directory") return "folder";
-            if (std::string(entity) == "app") return "application";
-            return entity;
-        }
-    }
-    return {};
-}
-
 } // namespace
 
 ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const {
+    return parse(tokens, GrammarConfig::defaults());
+}
+
+ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens,
+                                const GrammarConfig& config) const {
     ParseMatch match;
     match.tokens = tokens;
 
@@ -46,27 +30,24 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const {
         return match;
     }
 
-    const auto first = lower(tokens.front());
-    if (first == "create" || first == "make") {
-        match.operation = "create";
-    } else if (first == "rename") {
-        match.operation = "rename";
-    } else if (first == "move") {
-        match.operation = "move";
-    } else if (first == "copy" || first == "duplicate") {
-        match.operation = "copy";
-    } else if (first == "delete" || first == "remove") {
-        match.operation = "delete";
-    } else if (first == "search" || first == "find") {
-        match.operation = "search";
-    } else if (first == "open" || first == "launch" || first == "start") {
-        match.operation = "open";
-    } else {
+    const auto original_action = lower(tokens.front());
+    const auto action = config.canonical_term(original_action);
+    if (!config.actions.contains(action)) {
         match.error = "I do not recognize that command yet.";
         return match;
     }
+    match.operation = action;
+    match.tokens.front() = action;
 
-    match.entity_type = identify_entity(tokens);
+    for (std::size_t index = 1; index < tokens.size(); ++index) {
+        const auto canonical = config.canonical_term(lower(tokens[index]));
+        if (config.entities.contains(canonical)) {
+            match.entity_type = canonical;
+            match.tokens[index] = canonical;
+            break;
+        }
+    }
+
     if (match.entity_type.empty()) {
         match.entity_type = match.operation == "open" ? "application" : "item";
     }

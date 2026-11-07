@@ -1,6 +1,11 @@
 #include "seventh/engines/grammar/grammar_subsystem.hpp"
 
+#include <utility>
+
 namespace seventh::grammar {
+
+GrammarSubsystem::GrammarSubsystem(GrammarConfig config)
+    : engine_(std::move(config)) {}
 
 std::string_view GrammarSubsystem::id() const noexcept {
     return "grammar";

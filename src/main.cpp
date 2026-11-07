@@ -1,8 +1,10 @@
 #include "seventh/cli/command_line.hpp"
 #include "seventh/cli/input_handler.hpp"
 #include "seventh/cli/terminal_output.hpp"
+#include "seventh/engines/grammar/grammar_config.hpp"
 #include "seventh/engines/grammar/grammar_subsystem.hpp"
 #include "seventh/orchestrator/orchestrator.hpp"
+#include "seventh/utilities/logger.hpp"
 
 #include <iostream>
 #include <memory>
@@ -24,12 +26,22 @@ int main(int argc, char* argv[]) {
         break;
     }
 
+    seventh::utilities::Logger logger;
+    auto grammar_config = seventh::grammar::GrammarConfig::defaults();
+    std::string config_error;
+    if (!seventh::grammar::GrammarConfigLoader{}.load_directory(
+            "config/grammar", grammar_config, config_error)) {
+        logger.write(seventh::utilities::LogLevel::Warning,
+                     "Using built-in grammar defaults: " + config_error);
+    }
+
     seventh::cli::print_startup_message();
     std::cout << "Type an instruction, or 'exit' to quit.\n";
 
     seventh::Orchestrator orchestrator;
     orchestrator.register_subsystem(
-        std::make_shared<seventh::grammar::GrammarSubsystem>());
+        std::make_shared<seventh::grammar::GrammarSubsystem>(
+            std::move(grammar_config)));
     seventh::cli::InputHandler input_handler;
 
     while (true) {

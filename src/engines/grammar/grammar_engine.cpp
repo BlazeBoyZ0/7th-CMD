@@ -9,6 +9,9 @@
 
 namespace seventh::grammar {
 
+GrammarEngine::GrammarEngine(GrammarConfig config)
+    : config_(std::move(config)) {}
+
 CanonicalIntent GrammarEngine::interpret(const std::string& input) const {
     const auto tokens = input_processor_.process(input);
     GrammarParser parser;
@@ -16,7 +19,7 @@ CanonicalIntent GrammarEngine::interpret(const std::string& input) const {
     SemanticAnalyzer semantic_analyzer;
     CirGenerator cir_generator;
 
-    const auto match = parser.parse(tokens);
+    const auto match = parser.parse(tokens, config_);
     auto ast = ast_generator.generate(match);
     ast = semantic_analyzer.analyze(std::move(ast));
     return cir_generator.generate(ast, input);
