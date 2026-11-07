@@ -1,468 +1,3 @@
-#include "seventh/orchestrator/command_subsystem.hpp"
-
-#include "seventh/platform/linux/linux_operation_executor.hpp"
-#include "seventh/systems/entity_resolution/entity_types.hpp"
-#include "seventh/systems/permissions/permission_types.hpp"
-#include "seventh/systems/verification/verification_types.hpp"
-#include "seventh/systems/information/information_processor.hpp"
-#include "seventh/systems/information/platform_data_providers.hpp"
-#include "seventh/systems/information/provider_registry.hpp"
-
-#include <algorithm>
-#include <charconv>
-#include <cctype>
-#include <cstdlib>
-#include <filesystem>
-#include <map>
-#include <memory>
-#include <optional>
-#include <utility>
-#include <vector>
-
-namespace seventh {
-namespace {
-
-std::string lower(std::string value) {
-    for (char& ch : value) {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return value;
-}
-
-SubsystemResult failure(const RequestId& id, std::string message) {
-    SubsystemResult result;
-    result.request_id = id;
-    result.status = SubsystemStatus::Failure;
-    result.error = std::move(message);
-    return result;
-}
-
-SubsystemResult needs_choice(
-    const RequestId& id, const std::string& kind,
-    const std::vector<entity_resolution::EntityCandidate>& candidates,
-    bool invalid_answer = false) {
-    SubsystemResult result;
-    result.request_id = id;
-    result.status = SubsystemStatus::NeedsInformation;
-    result.missing_information.emplace_back(kind + " choice");
-    result.error = invalid_answer
-        ? "The supplied choice did not identify exactly one matching " + kind + "."
-        : "More than one matching " + kind + " was found.";
-
-    result.result_data["choice_kind"] = kind;
-    result.result_data["choice_count"] = std::to_string(candidates.size());
-    std::string options;
-    constexpr std::size_t max_options = 10;
-    const auto displayed = std::min(candidates.size(), max_options);
-    for (std::size_t index = 0; index < displayed; ++index) {
-        const auto& candidate = candidates[index];
-        if (!options.empty()) options += '\n';
-        options += std::to_string(index + 1) + ". " + candidate.name +
-                   " | " + candidate.id;
-        if (!candidate.location.empty()) options += " | " + candidate.location;
-    }
-    result.result_data["choice_options"] = std::move(options);
-    result.result_data["choice_truncated"] =
-        candidates.size() > displayed ? "true" : "false";
-    return result;
-}
-
-std::optional<entity_resolution::EntityCandidate> choose_candidate(
-    const SubsystemRequest& request, const std::string& field,
-    const std::vector<entity_resolution::EntityCandidate>& candidates,
-    bool& invalid_answer) {
-    invalid_answer = false;
-    const auto answer_entry = request.context.find("clarification." + field);
-    if (answer_entry == request.context.end()) return std::nullopt;
-
-    const auto answer = lower(answer_entry->second);
-    if (answer.empty()) {
-        invalid_answer = true;
-        return std::nullopt;
-    }
-
-    std::vector<const entity_resolution::EntityCandidate*> exact_matches;
-    for (const auto& candidate : candidates) {
-        if (lower(candidate.id) == answer || lower(candidate.name) == answer ||
-            lower(candidate.location) == answer) {
-            exact_matches.push_back(&candidate);
-        }
-    }
-    if (exact_matches.size() == 1) return *exact_matches.front();
-    if (exact_matches.size() > 1) {
-        invalid_answer = true;
-        return std::nullopt;
-    }
-
-    std::size_t index = 0;
-    const auto parsed = std::from_chars(
-        answer.data(), answer.data() + answer.size(), index);
-    if (parsed.ec == std::errc{} && parsed.ptr == answer.data() + answer.size() &&
-        index > 0 && index <= candidates.size()) {
-        return candidates[index - 1];
-    }
-
-    invalid_answer = true;
-    return std::nullopt;
-}
-std::vector<std::string> split_instruction_chain(const std::string& input) {
-    const auto lowered = lower(input);
-    std::vector<std::string> clauses;
-    std::size_t start = 0;
-    while (start < input.size()) {
-        const auto and_then = lowered.find(" and then ", start);
-        const auto then = lowered.find(" then ", start);
-        std::size_t position = std::string::npos;
-        std::size_t delimiter_size = 0;
-        if (and_then != std::string::npos &&
-            (then == std::string::npos || and_then <= then)) {
-            position = and_then;
-            delimiter_size = 10;
-        } else if (then != std::string::npos) {
-            position = then;
-            delimiter_size = 6;
-        }
-        if (position == std::string::npos) break;
-        const auto clause = input.substr(start, position - start);
-        if (!clause.empty()) clauses.push_back(clause);
-        start = position + delimiter_size;
-    }
-    const auto final_clause = input.substr(start);
-    if (!final_clause.empty()) clauses.push_back(final_clause);
-    return clauses;
-}
-
-} // namespace
-
-CommandSubsystem::CommandSubsystem(
-    platform::PlatformInterface& platform, grammar::GrammarConfig grammar_config,
-    knowledge::KnowledgeSystem* knowledge)
-    : platform_(platform), grammar_engine_(std::move(grammar_config)),
-      permission_manager_(capabilities_), knowledge_(knowledge) {
-    capabilities::CapabilityDefinition create_folder;
-    create_folder.id = "filesystem.create_directory";
-    create_folder.description = "Create a directory within the user's home directory.";
-    create_folder.operations = {"create_directory"};
-    create_folder.enabled = true;
-    create_folder.read_only = false;
-    if (const char* home = std::getenv("HOME")) {
-        create_folder.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(create_folder));
-
-    capabilities::CapabilityDefinition open_folder;
-    open_folder.id = "filesystem.open_path";
-    open_folder.description = "Open a folder inside the user's home directory.";
-    open_folder.operations = {"open_path"};
-    open_folder.enabled = true;
-    open_folder.read_only = true;
-    if (const char* home = std::getenv("HOME")) {
-        open_folder.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(open_folder));
-
-    capabilities::CapabilityDefinition search_files;
-    search_files.id = "filesystem.search";
-    search_files.description = "Search one directory within the user's home directory.";
-    search_files.operations = {"search_files"};
-    search_files.enabled = true;
-    search_files.read_only = true;
-    if (const char* home = std::getenv("HOME")) {
-        search_files.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(search_files));
-
-    capabilities::CapabilityDefinition rename_path;
-    rename_path.id = "filesystem.rename";
-    rename_path.description = "Rename or move a filesystem entry inside the user's home directory.";
-    rename_path.operations = {"rename_path"};
-    rename_path.enabled = true;
-    rename_path.read_only = false;
-    if (const char* home = std::getenv("HOME")) {
-        rename_path.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(rename_path));
-
-    capabilities::CapabilityDefinition copy_file;
-    copy_file.id = "filesystem.copy";
-    copy_file.description = "Copy a file inside the user's home directory.";
-    copy_file.operations = {"copy_file"};
-    copy_file.enabled = true;
-    copy_file.read_only = false;
-    if (const char* home = std::getenv("HOME")) {
-        copy_file.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(copy_file));
-
-    capabilities::CapabilityDefinition delete_path;
-    delete_path.id = "filesystem.delete";
-    delete_path.description = "Delete a file or empty directory inside the user's home directory.";
-    delete_path.operations = {"delete_path"};
-    delete_path.enabled = true;
-    delete_path.read_only = false;
-    delete_path.requires_confirmation = true;
-    if (const char* home = std::getenv("HOME")) {
-        delete_path.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(delete_path));
-
-    capabilities::CapabilityDefinition read_text;
-    read_text.id = "filesystem.read_text";
-    read_text.description = "Read small text files inside the user's home directory.";
-    read_text.operations = {"read_text"};
-    read_text.enabled = true;
-    read_text.read_only = true;
-    if (const char* home = std::getenv("HOME")) {
-        read_text.allowed_roots.emplace_back(home);
-    }
-    capabilities_.register_capability(std::move(read_text));
-
-    capabilities::CapabilityDefinition launch_application;
-    launch_application.id = "application.launch";
-    launch_application.description = "Launch an installed desktop application.";
-    launch_application.operations = {"launch_application"};
-    launch_application.enabled = true;
-    launch_application.read_only = false;
-    capabilities_.register_capability(std::move(launch_application));
-
-    execution_engine_.register_executor(
-        std::make_shared<platform::linux_backend::LinuxOperationExecutor>(platform_));
-    information::register_platform_data_providers(information_registry_, platform_);
-}
-
-bool CommandSubsystem::load_capabilities(const std::string& path,
-                                         std::string& error) {
-    return capabilities_.load_from_file(path, error);
-}
-
-bool CommandSubsystem::load_reasoning_rules(const std::string& path,
-                                            std::string& error,
-                                            bool merge) {
-    return reasoning_engine_.load_rules_from_file(path, error, merge);
-}
-
-std::string_view CommandSubsystem::id() const noexcept {
-    return "command";
-}
-
-bool CommandSubsystem::can_handle(const SubsystemRequest& request) const {
-    return request.operation == "command" &&
-           request.input_data.contains("raw_input");
-}
-
-std::string CommandSubsystem::resolve_destination(
-    const std::string& destination) const {
-    const char* home = std::getenv("HOME");
-    if (!home) return {};
-
-    const std::filesystem::path requested(destination);
-    if (!destination.empty() && requested.is_absolute()) {
-        return requested.lexically_normal().string();
-    }
-
-    const auto normalized = lower(destination);
-    std::string preference_key;
-    if (normalized == "desktop") preference_key = "desktop_path";
-    else if (normalized == "documents") preference_key = "documents_path";
-    else if (normalized == "downloads") preference_key = "downloads_path";
-    else if (normalized == "pictures") preference_key = "pictures_path";
-    else if (normalized == "workspace") preference_key = "default_workspace";
-
-    if (knowledge_ && !preference_key.empty()) {
-        const auto preference = knowledge_->get(
-            knowledge::KnowledgeScope::UserPreference, preference_key);
-        if (preference && !preference->value.empty()) {
-            std::filesystem::path preferred(preference->value);
-            if (preferred.is_relative()) preferred = std::filesystem::path(home) / preferred;
-            return preferred.lexically_normal().string();
-        }
-    }
-
-    if (destination.empty()) {
-        if (knowledge_) {
-            const auto preference = knowledge_->get(
-                knowledge::KnowledgeScope::UserPreference, "default_workspace");
-            if (preference && !preference->value.empty()) {
-                std::filesystem::path preferred(preference->value);
-                if (preferred.is_relative()) preferred = std::filesystem::path(home) / preferred;
-                return preferred.lexically_normal().string();
-            }
-        }
-        return {};
-    }
-
-    if (normalized == "home") return std::filesystem::path(home).string();
-    if (normalized == "desktop") {
-        return (std::filesystem::path(home) / "Desktop").string();
-    }
-    const auto* session = context_manager_.find("session");
-    if (session) {
-        const auto key = "folder:" + lower(destination);
-        if (session->values.contains("ambiguous:" + key)) return {};
-        const auto remembered = session->values.find(key);
-        if (remembered != session->values.end()) return remembered->second;
-    }
-    return (std::filesystem::path(home) / requested).lexically_normal().string();
-}
-
-void CommandSubsystem::remember_folder(
-    const std::string& name, const std::string& path) {
-    auto& session = context_manager_.create("session");
-    const auto key = "folder:" + lower(name);
-    const auto ambiguous_key = "ambiguous:" + key;
-    session.values["last_entity.type"] = "folder";
-    session.values["last_entity.name"] = name;
-    session.values["last_entity.path"] = path;
-    session.values.erase("last_entity.id");
-
-    if (session.values.contains(ambiguous_key)) return;
-    const auto previous = session.values.find(key);
-    if (previous != session.values.end() && previous->second != path) {
-        session.values.erase(previous);
-        session.values[ambiguous_key] = "true";
-        return;
-    }
-    session.values[key] = path;
-}
-
-SubsystemResult CommandSubsystem::create_folder(
-    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
-    const auto destination_path = resolve_destination(intent.destination);
-    if (destination_path.empty()) {
-        SubsystemResult result;
-        result.request_id = request.request_id;
-        result.status = SubsystemStatus::NeedsInformation;
-        result.missing_information.emplace_back("destination folder");
-        result.error = "Specify a destination folder or configure a default workspace.";
-        return result;
-    }
-
-    const std::filesystem::path folder_name(intent.name);
-    if (folder_name.empty() || folder_name.is_absolute() ||
-        folder_name.has_parent_path() || intent.name == "." || intent.name == "..") {
-        return failure(request.request_id,
-            "A folder name must be a single name, not a path.");
-    }
-
-    std::error_code fs_error;
-    if (!std::filesystem::is_directory(destination_path, fs_error) || fs_error) {
-        return failure(request.request_id,
-            "The destination folder does not exist or cannot be accessed.");
-    }
-
-    entity_resolution::ResolutionRequest resolution_request;
-    resolution_request.query = std::filesystem::path(destination_path).filename().string();
-    resolution_request.expected_type = entity_resolution::EntityType::Folder;
-    resolution_request.context_hint = std::filesystem::path(destination_path).parent_path().string();
-    resolution_request.candidates.push_back({
-        destination_path, resolution_request.query,
-        entity_resolution::EntityType::Folder, resolution_request.context_hint,
-        "linux.filesystem", true, 0
-    });
-    const auto resolved = entity_resolver_.resolve(std::move(resolution_request));
-    if (resolved.status != entity_resolution::ResolutionStatus::Found) {
-        return failure(request.request_id, "The destination folder could not be resolved uniquely.");
-    }
-
-    const auto target_path =
-        (std::filesystem::path(resolved.selected.id) / folder_name).lexically_normal().string();
-
-    reasoning::Fact existence_fact;
-    existence_fact.subject = target_path;
-    existence_fact.property = "exists";
-    existence_fact.value = platform_.filesystem().exists(target_path) ? "true" : "false";
-    existence_fact.source = "linux.filesystem";
-    existence_fact.confidence = 100;
-    existence_fact.fresh = true;
-
-    reasoning::ReasoningRequest reasoning_request;
-    reasoning_request.query = {target_path, "exists", "false", true};
-    reasoning_request.facts.push_back(std::move(existence_fact));
-    const auto reasoning_result = reasoning_engine_.evaluate(reasoning_request);
-    if (reasoning_result.truth != TruthValue::True) {
-        return failure(request.request_id,
-            reasoning_result.truth == TruthValue::False
-                ? "A folder with that name already exists."
-                : "The system could not determine whether the target already exists.");
-    }
-
-    planning::PlanningRequest planning_request;
-    planning_request.goal = "Create folder " + intent.name + " in " + destination_path;
-    planning::TaskDraft draft;
-    draft.id = "create-folder";
-    draft.operation = "create_directory";
-    draft.input_data["path"] = target_path;
-    planning_request.tasks.push_back(std::move(draft));
-    auto plan = planning_engine_.create_plan(planning_request);
-    if (!plan.valid || plan.tasks.empty()) {
-        return failure(request.request_id,
-            plan.errors.empty() ? "Unable to create a valid execution plan."
-                                : plan.errors.front());
-    }
-
-    permissions::PermissionRequest permission_request;
-    permission_request.capability_id = "filesystem.create_directory";
-    permission_request.operation = "create_directory";
-    permission_request.resource_path = target_path;
-    permission_request.modifies_state = true;
-    const auto permission = permission_manager_.authorize(permission_request);
-    if (permission.decision != permissions::PermissionDecision::Allowed) {
-        SubsystemResult result;
-        result.request_id = request.request_id;
-        result.status = permission.decision ==
-            permissions::PermissionDecision::RequiresConfirmation
-                ? SubsystemStatus::NeedsPermission : SubsystemStatus::Failure;
-        result.error = permission.reason;
-        return result;
-    }
-
-    if (!plan_state_manager_.start(plan, plan.tasks.front().id)) {
-        return failure(request.request_id, "The planned task could not enter the running state.");
-    }
-
-    execution::ExecutionRequest execution_request;
-    execution_request.task_id = request.task_id;
-    execution_request.operation = plan.tasks.front().operation;
-    execution_request.input_data = plan.tasks.front().input_data;
-    execution_request.requires_authorization = true;
-    execution_request.authorization_granted = true;
-    const auto executed = execution_engine_.execute(execution_request);
-    if (executed.status != execution::ExecutionStatus::Success) {
-        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
-            return failure(request.request_id,
-                executed.error + " The plan state could not be marked failed.");
-        }
-        return failure(request.request_id, executed.error);
-    }
-    verification::VerificationRequest verification_request;
-    verification_request.operation = "create_directory";
-    verification_request.expected["exists"] = "true";
-    verification_request.actual["exists"] =
-        platform_.filesystem().exists(target_path) ? "true" : "false";
-    if (!verification_system_.verify(verification_request).verified) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
-        return failure(request.request_id,
-            "The operation ran, but verification could not confirm the new folder.");
-    }
-
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id,
-            "Execution succeeded, but the plan state could not be marked complete.");
-    }
-
-    SubsystemResult result;
-    result.request_id = request.request_id;
-    result.status = SubsystemStatus::Success;
-    result.result_data["operation"] = "create";
-    result.result_data["entity_type"] = "folder";
-    result.result_data["name"] = intent.name;
-    result.result_data["destination"] = destination_path;
-    result.result_data["path"] = target_path;
-    result.result_data["verified"] = "true";
-    remember_folder(intent.name, target_path);
-    return result;
-}
-
 SubsystemResult CommandSubsystem::open_target(
     const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
     std::optional<platform::ApplicationEntry> selected_app;
@@ -660,18 +195,19 @@ SubsystemResult CommandSubsystem::open_target(
         }
         return failure(request.request_id, executed.error);
     }
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id,
-            "Execution succeeded, but the plan state could not be marked complete.");
-    }
-
     verification::VerificationRequest verification_request;
     verification_request.operation = operation;
     verification_request.expected["started"] = "true";
     verification_request.actual["started"] =
         executed.output_data.contains("started") ? executed.output_data.at("started") : "false";
     if (!verification_system_.verify(verification_request).verified) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id, "The open request could not be verified.");
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
     }
 
     SubsystemResult result;
@@ -965,11 +501,6 @@ SubsystemResult CommandSubsystem::modify_path(
         }
         return failure(request.request_id, executed.error);
     }
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id,
-            "Execution succeeded, but the plan state could not be marked complete.");
-    }
-
     verification::VerificationRequest verification_request;
     verification_request.operation = execution_operation;
     verification_request.expected["destination_exists"] = "true";
@@ -985,8 +516,14 @@ SubsystemResult CommandSubsystem::modify_path(
             platform_.filesystem().exists(source_path.string()) ? "true" : "false";
     }
     if (!verification_system_.verify(verification_request).verified) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id,
             "The filesystem operation ran, but verification did not pass.");
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
     }
 
     SubsystemResult result;
@@ -1132,18 +669,19 @@ SubsystemResult CommandSubsystem::delete_target(
         }
         return failure(request.request_id, executed.error);
     }
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id,
-            "Execution succeeded, but the plan state could not be marked complete.");
-    }
-
     verification::VerificationRequest verification_request;
     verification_request.operation = "delete_path";
     verification_request.expected["exists"] = "false";
     verification_request.actual["exists"] =
         platform_.filesystem().exists(path) ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id, "The delete action ran, but verification did not pass.");
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
     }
 
     SubsystemResult result;
@@ -1268,16 +806,13 @@ SubsystemResult CommandSubsystem::count_file(
         }
         return failure(request.request_id, executed.error);
     }
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id,
-            "Execution succeeded, but the plan state could not be marked complete.");
-    }
-
     const auto text_value = executed.output_data.find("text");
     if (text_value == executed.output_data.end()) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id, "The file reader returned no text content.");
     }
     if (text_value->second.find('\0') != std::string::npos) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id, "The selected file appears to contain binary data.");
     }
 
@@ -1286,7 +821,10 @@ SubsystemResult CommandSubsystem::count_file(
     data_request.operation = operation;
     data_request.text_input = text_value->second;
     const auto count = processor.process(data_request);
-    if (!count.success) return failure(request.request_id, count.error);
+    if (!count.success) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        return failure(request.request_id, count.error);
+    }
 
     verification::VerificationRequest verification_request;
     verification_request.operation = "count_file_text";
@@ -1294,7 +832,13 @@ SubsystemResult CommandSubsystem::count_file(
     verification_request.actual["exists"] =
         platform_.filesystem().exists(path) ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
         return failure(request.request_id, "The file could not be verified after reading.");
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id,
+            "Execution succeeded, but the plan state could not be marked complete.");
     }
 
     SubsystemResult result;
