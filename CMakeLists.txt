@@ -78,6 +78,12 @@ add_executable(7thcmd
     src/systems/permissions/authorization_handler.cpp
     src/systems/permissions/permission_checker.cpp
     src/systems/permissions/permission_manager.cpp
+    src/systems/recovery/error_manager.cpp
+    src/systems/recovery/recovery_manager.cpp
+    src/systems/verification/result_verifier.cpp
+    src/systems/verification/verification_system.cpp
+    src/systems/response/response_formatter.cpp
+    src/systems/response/response_generator.cpp
     src/orchestrator/orchestrator.cpp
 )
 
