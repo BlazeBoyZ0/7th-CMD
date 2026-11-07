@@ -1,5 +1,8 @@
 #include "seventh/engines/reasoning/reasoning_engine.hpp"
 
+#include <algorithm>
+#include <utility>
+
 namespace seventh::reasoning {
 
 bool ReasoningEngine::load_rules_from_file(
