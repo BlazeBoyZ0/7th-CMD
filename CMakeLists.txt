@@ -40,6 +40,7 @@ add_executable(7thcmd
     src/engines/reasoning/contradiction_handler.cpp
     src/engines/reasoning/fact_resolver.cpp
     src/engines/reasoning/reasoning_engine.cpp
+    src/engines/reasoning/rule_loader.cpp
     src/engines/reasoning/reasoning_trace.cpp
     src/engines/reasoning/rule_evaluator.cpp
     src/engines/reasoning/truth_evaluator.cpp

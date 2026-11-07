@@ -29,6 +29,8 @@ public:
     [[nodiscard]] bool can_handle(const SubsystemRequest& request) const override;
     [[nodiscard]] SubsystemResult handle(const SubsystemRequest& request) override;
     bool load_capabilities(const std::string& path, std::string& error);
+    bool load_reasoning_rules(const std::string& path, std::string& error,
+                              bool merge = false);
 
 private:
     [[nodiscard]] std::string resolve_destination(const std::string& destination) const;

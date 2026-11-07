@@ -171,6 +171,12 @@ bool CommandSubsystem::load_capabilities(const std::string& path,
     return capabilities_.load_from_file(path, error);
 }
 
+bool CommandSubsystem::load_reasoning_rules(const std::string& path,
+                                            std::string& error,
+                                            bool merge) {
+    return reasoning_engine_.load_rules_from_file(path, error, merge);
+}
+
 std::string_view CommandSubsystem::id() const noexcept {
     return "command";
 }

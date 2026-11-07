@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 int main(int argc, char* argv[]) {
     const auto result = seventh::cli::parse_command_line(argc, argv);
@@ -99,6 +100,34 @@ int main(int argc, char* argv[]) {
                     user_capabilities.string(), capability_error)) {
                 logger.write(seventh::utilities::LogLevel::Warning,
                              "User capability overrides were not loaded: " + capability_error);
+            }
+        }
+    }
+    const std::vector<std::filesystem::path> packaged_rule_files{
+        "config/knowledge/rules/rules.json",
+        "/usr/local/share/7thcmd/config/knowledge/rules/rules.json",
+        "/usr/share/7thcmd/config/knowledge/rules/rules.json"
+    };
+    for (const auto& path : packaged_rule_files) {
+        std::error_code path_error;
+        if (!std::filesystem::is_regular_file(path, path_error) || path_error) continue;
+        std::string rule_error;
+        if (!command_subsystem->load_reasoning_rules(path.string(), rule_error)) {
+            logger.write(seventh::utilities::LogLevel::Warning,
+                         "Reasoning rules were not loaded: " + rule_error);
+        }
+        break;
+    }
+    if (const char* home = std::getenv("HOME")) {
+        const auto user_rules =
+            std::filesystem::path(home) / ".config/7thcmd/rules.json";
+        std::error_code path_error;
+        if (std::filesystem::is_regular_file(user_rules, path_error) && !path_error) {
+            std::string rule_error;
+            if (!command_subsystem->load_reasoning_rules(
+                    user_rules.string(), rule_error, true)) {
+                logger.write(seventh::utilities::LogLevel::Warning,
+                             "User reasoning rules were not loaded: " + rule_error);
             }
         }
     }
