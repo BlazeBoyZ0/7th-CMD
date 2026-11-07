@@ -6,9 +6,11 @@
 #include "seventh/orchestrator/orchestrator.hpp"
 #include "seventh/utilities/logger.hpp"
 
+#include <array>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 int main(int argc, char* argv[]) {
     const auto result = seventh::cli::parse_command_line(argc, argv);
@@ -29,8 +31,20 @@ int main(int argc, char* argv[]) {
     seventh::utilities::Logger logger;
     auto grammar_config = seventh::grammar::GrammarConfig::defaults();
     std::string config_error;
-    if (!seventh::grammar::GrammarConfigLoader{}.load_directory(
-            "config/grammar", grammar_config, config_error)) {
+    bool loaded = false;
+    constexpr std::array<const char*, 3> config_directories{
+        "config/grammar",
+        "/usr/local/share/7thcmd/config/grammar",
+        "/usr/share/7thcmd/config/grammar"
+    };
+    for (const auto* directory : config_directories) {
+        if (seventh::grammar::GrammarConfigLoader{}.load_directory(
+                directory, grammar_config, config_error)) {
+            loaded = true;
+            break;
+        }
+    }
+    if (!loaded) {
         logger.write(seventh::utilities::LogLevel::Warning,
                      "Using built-in grammar defaults: " + config_error);
     }
