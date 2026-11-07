@@ -3,6 +3,7 @@ add_executable(7thcmd_tests
     ../src/engines/grammar/ast_generator.cpp
     ../src/engines/grammar/cir_generator.cpp
     ../src/engines/grammar/grammar_engine.cpp
+    ../src/engines/grammar/grammar_config.cpp
     ../src/engines/grammar/grammar_parser.cpp
     ../src/engines/grammar/input_processor.cpp
     ../src/engines/grammar/normalizer.cpp
@@ -21,6 +22,8 @@ add_executable(7thcmd_tests
     ../src/systems/permissions/permission_manager.cpp
     ../src/systems/permissions/permission_checker.cpp
     ../src/systems/permissions/authorization_handler.cpp
+    ../src/systems/capabilities/capability_registry.cpp
+    ../src/utilities/json_loader.cpp
     ../src/orchestrator/task_state_manager.cpp
     ../src/orchestrator/workflow_controller.cpp
 )
