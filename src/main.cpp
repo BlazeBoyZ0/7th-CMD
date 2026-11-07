@@ -71,8 +71,38 @@ int main(int argc, char* argv[]) {
     }
     orchestrator.register_subsystem(
         std::make_shared<seventh::grammar::GrammarSubsystem>(grammar_config));
-    orchestrator.register_subsystem(
-        std::make_shared<seventh::CommandSubsystem>(platform, grammar_config));
+
+    auto command_subsystem =
+        std::make_shared<seventh::CommandSubsystem>(platform, grammar_config);
+    const std::vector<std::filesystem::path> packaged_capability_files{
+        "config/capabilities.json",
+        "/usr/local/share/7thcmd/config/capabilities.json",
+        "/usr/share/7thcmd/config/capabilities.json"
+    };
+    for (const auto& path : packaged_capability_files) {
+        std::error_code path_error;
+        if (!std::filesystem::is_regular_file(path, path_error) || path_error) continue;
+        std::string capability_error;
+        if (!command_subsystem->load_capabilities(path.string(), capability_error)) {
+            logger.write(seventh::utilities::LogLevel::Warning,
+                         "Capability configuration was not loaded: " + capability_error);
+        }
+        break;
+    }
+    if (const char* home = std::getenv("HOME")) {
+        const auto user_capabilities =
+            std::filesystem::path(home) / ".config/7thcmd/capabilities.json";
+        std::error_code path_error;
+        if (std::filesystem::is_regular_file(user_capabilities, path_error) && !path_error) {
+            std::string capability_error;
+            if (!command_subsystem->load_capabilities(
+                    user_capabilities.string(), capability_error)) {
+                logger.write(seventh::utilities::LogLevel::Warning,
+                             "User capability overrides were not loaded: " + capability_error);
+            }
+        }
+    }
+    orchestrator.register_subsystem(std::move(command_subsystem));
     seventh::response::ResponseGenerator response_generator;
     seventh::cli::InputHandler input_handler;
 

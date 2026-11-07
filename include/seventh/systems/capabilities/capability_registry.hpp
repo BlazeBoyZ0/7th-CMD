@@ -16,6 +16,7 @@ public:
     [[nodiscard]] std::optional<CapabilityDefinition> for_operation(
         const std::string& operation) const;
     bool set_enabled(const std::string& id, bool enabled);
+    bool load_from_file(const std::string& path, std::string& error);
 
 private:
     std::map<std::string, CapabilityDefinition> capabilities_;

@@ -27,6 +27,7 @@ public:
     [[nodiscard]] std::string_view id() const noexcept override;
     [[nodiscard]] bool can_handle(const SubsystemRequest& request) const override;
     [[nodiscard]] SubsystemResult handle(const SubsystemRequest& request) override;
+    bool load_capabilities(const std::string& path, std::string& error);
 
 private:
     [[nodiscard]] std::string resolve_destination(const std::string& destination) const;

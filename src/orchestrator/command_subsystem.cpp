@@ -164,6 +164,11 @@ CommandSubsystem::CommandSubsystem(
         std::make_shared<platform::linux_backend::LinuxOperationExecutor>(platform_));
 }
 
+bool CommandSubsystem::load_capabilities(const std::string& path,
+                                         std::string& error) {
+    return capabilities_.load_from_file(path, error);
+}
+
 std::string_view CommandSubsystem::id() const noexcept {
     return "command";
 }
