@@ -4,12 +4,10 @@ namespace seventh::reasoning {
 
 ReasoningResult ReasoningEngine::evaluate(const ReasoningRequest& request) const {
     ReasoningResult result;
-    const auto candidates = bounded_search_.collect_relevant(
-        request.query, request.facts, request.facts.size());
 
+    const auto candidates = bounded_search_.collect_relevant(
+        request.query, request.facts, request.max_candidates);
     const auto direct = fact_resolver_.resolve(request.query, candidates);
-    result.evidence = direct.matches;
-    result.truth = direct.truth;
 
     const auto rules = rule_evaluator_.evaluate(
         request.rules, request.facts, request.max_rule_evaluations);
@@ -17,23 +15,36 @@ ReasoningResult ReasoningEngine::evaluate(const ReasoningRequest& request) const
     result.budget_exhausted = rules.budget_exhausted;
     result.derived_facts = rules.derived;
 
-    if (result.truth == TruthValue::Unknown && !result.derived_facts.empty()) {
-        const auto derived = fact_resolver_.resolve(request.query, result.derived_facts);
-        result.truth = derived.truth;
-        result.evidence.insert(result.evidence.end(),
-                               derived.matches.begin(), derived.matches.end());
+    FactResolution derived;
+    if (!result.derived_facts.empty()) {
+        derived = fact_resolver_.resolve(request.query, result.derived_facts);
     }
 
-    const bool conflict = direct.contradiction ||
-        contradiction_handler_.contradictory(result.evidence);
+    result.evidence = direct.matches;
+    result.evidence.insert(result.evidence.end(),
+                           derived.matches.begin(), derived.matches.end());
+
+    const bool opposing_conclusions =
+        (direct.truth == TruthValue::True && derived.truth == TruthValue::False) ||
+        (direct.truth == TruthValue::False && derived.truth == TruthValue::True);
+
+    const bool conflict = direct.contradiction || derived.contradiction ||
+        opposing_conclusions || contradiction_handler_.contradictory(result.evidence);
+
     if (conflict) {
         result.truth = TruthValue::Unknown;
         result.explanation = "Conflicting fresh facts prevent a reliable conclusion.";
-    } else if (result.budget_exhausted && result.truth == TruthValue::Unknown) {
+    } else if (direct.truth != TruthValue::Unknown) {
+        result.truth = direct.truth;
+    } else {
+        result.truth = derived.truth;
+    }
+
+    if (result.truth == TruthValue::Unknown && result.budget_exhausted) {
         result.explanation = "The reasoning work budget was exhausted before a conclusion.";
-    } else if (result.truth == TruthValue::True) {
+    } else if (result.truth == TruthValue::True && result.explanation.empty()) {
         result.explanation = "The available evidence supports the requested fact.";
-    } else if (result.truth == TruthValue::False) {
+    } else if (result.truth == TruthValue::False && result.explanation.empty()) {
         result.explanation = "The available evidence contradicts the requested fact.";
     }
 

@@ -5,26 +5,34 @@ namespace seventh::reasoning {
 FactResolution FactResolver::resolve(const FactQuery& query,
                                       const std::vector<Fact>& facts) const {
     FactResolution result;
-    bool saw_true = false;
-    bool saw_false = false;
+    bool saw_match = false;
+    bool saw_non_match = false;
 
     for (const auto& fact : facts) {
         if (!fact.fresh || fact.subject != query.subject ||
             fact.property != query.property) {
             continue;
         }
-        if (query.match_value && fact.value != query.value) {
-            saw_false = true;
-            continue;
-        }
+
+        // Preserve all relevant evidence, including facts that disprove the
+        // requested value. The caller can then inspect conflicts as well.
         result.matches.push_back(fact);
-        if (!query.match_value || fact.value == query.value) saw_true = true;
+
+        if (!query.match_value || fact.value == query.value) {
+            saw_match = true;
+        } else {
+            saw_non_match = true;
+        }
     }
 
-    result.contradiction = saw_true && saw_false;
-    if (result.contradiction) result.truth = TruthValue::Unknown;
-    else if (saw_true) result.truth = TruthValue::True;
-    else if (saw_false) result.truth = TruthValue::False;
+    result.contradiction = saw_match && saw_non_match;
+    if (result.contradiction) {
+        result.truth = TruthValue::Unknown;
+    } else if (saw_match) {
+        result.truth = TruthValue::True;
+    } else if (saw_non_match) {
+        result.truth = TruthValue::False;
+    }
     return result;
 }
 

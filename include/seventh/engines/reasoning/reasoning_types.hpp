@@ -49,6 +49,7 @@ struct ReasoningRequest {
     FactQuery query;
     std::vector<Fact> facts;
     std::vector<Rule> rules;
+    std::size_t max_candidates{256};
     std::size_t max_rule_evaluations{128};
 };
 
