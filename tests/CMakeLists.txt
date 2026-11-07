@@ -21,6 +21,8 @@ add_executable(7thcmd_tests
     ../src/systems/permissions/permission_manager.cpp
     ../src/systems/permissions/permission_checker.cpp
     ../src/systems/permissions/authorization_handler.cpp
+    ../src/orchestrator/task_state_manager.cpp
+    ../src/orchestrator/workflow_controller.cpp
 )
 
 target_include_directories(7thcmd_tests PRIVATE ../include)

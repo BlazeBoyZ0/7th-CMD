@@ -3,6 +3,8 @@
 #include "seventh/engines/reasoning/rule_evaluator.hpp"
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
 #include "seventh/systems/permissions/permission_manager.hpp"
+#include "seventh/orchestrator/task_state_manager.hpp"
+#include "seventh/orchestrator/workflow_controller.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -144,6 +146,43 @@ void test_planning_dependencies() {
     request.tasks[1].dependencies = {"child"};
     const auto cyclic = PlanningEngine{}.create_plan(request);
     expect(!cyclic.valid, "a cyclic dependency graph is rejected");
+}
+
+
+void test_task_lifecycle() {
+    using namespace seventh;
+
+    TaskStateManager states;
+    expect(states.create("task-1"), "a new task can be registered");
+    expect(!states.create("task-1"), "duplicate task identifiers are rejected");
+    expect(!states.transition("task-1", TaskState::Completed),
+           "a task cannot skip directly from NEW to COMPLETED");
+    expect(states.transition("task-1", TaskState::Understanding),
+           "NEW can transition to UNDERSTANDING");
+    expect(states.transition("task-1", TaskState::Routing),
+           "UNDERSTANDING can transition to ROUTING");
+    expect(states.transition("task-1", TaskState::Processing),
+           "ROUTING can transition to PROCESSING");
+    expect(states.transition("task-1", TaskState::WaitingForUser),
+           "PROCESSING can pause for clarification");
+    expect(states.transition("task-1", TaskState::Processing),
+           "a clarified task can resume processing");
+    expect(states.transition("task-1", TaskState::Completed),
+           "a processed task can complete");
+    expect(!states.transition("task-1", TaskState::Processing),
+           "a completed task cannot be restarted");
+
+    WorkflowController workflow;
+    SubsystemResult result;
+    result.status = SubsystemStatus::NeedsPermission;
+    expect(workflow.next_state(result) == TaskState::WaitingForPermission,
+           "permission requests pause the task in the permission state");
+    result.status = SubsystemStatus::NeedsInformation;
+    expect(workflow.next_state(result) == TaskState::WaitingForUser,
+           "missing information pauses the task for the user");
+    result.status = SubsystemStatus::Failure;
+    expect(workflow.next_state(result) == TaskState::Failed,
+           "subsystem failures move the task to FAILED");
 }
 
 void test_permission_boundaries() {
