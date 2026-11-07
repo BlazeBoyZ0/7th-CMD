@@ -128,10 +128,11 @@ std::optional<ApplicationEntry> LinuxApplications::find(
 
 std::optional<ApplicationEntry> LinuxApplications::find_default(
     const std::string& role) const {
-    const auto id = default_desktop_id(role);
-    return id ? find(*id) : std::nullopt;
+    auto id = default_desktop_id(role);
+    if (!id) return std::nullopt;
+    if (id->ends_with(".desktop")) id->resize(id->size() - 8);
+    return find(*id);
 }
-
 PlatformResult LinuxApplications::launch(const ApplicationEntry& application) {
     if (application.id.empty()) return {false, "A desktop application ID is required."};
     pid_t child = 0;
