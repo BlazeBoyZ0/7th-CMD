@@ -35,6 +35,8 @@ private:
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
     [[nodiscard]] SubsystemResult modify_path(
         const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
+    [[nodiscard]] SubsystemResult delete_target(
+        const SubsystemRequest& request, const grammar::CanonicalIntent& intent);
 
     platform::PlatformInterface& platform_;
     grammar::GrammarEngine grammar_engine_;

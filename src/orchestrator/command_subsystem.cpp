@@ -100,6 +100,18 @@ CommandSubsystem::CommandSubsystem(
     }
     capabilities_.register_capability(std::move(copy_file));
 
+    capabilities::CapabilityDefinition delete_path;
+    delete_path.id = "filesystem.delete";
+    delete_path.description = "Delete a file or empty directory inside the user's home directory.";
+    delete_path.operations = {"delete_path"};
+    delete_path.enabled = true;
+    delete_path.read_only = false;
+    delete_path.requires_confirmation = true;
+    if (const char* home = std::getenv("HOME")) {
+        delete_path.allowed_roots.emplace_back(home);
+    }
+    capabilities_.register_capability(std::move(delete_path));
+
     capabilities::CapabilityDefinition launch_application;
     launch_application.id = "application.launch";
     launch_application.description = "Launch an installed desktop application.";
@@ -693,6 +705,146 @@ SubsystemResult CommandSubsystem::modify_path(
     return result;
 }
 
+
+SubsystemResult CommandSubsystem::delete_target(
+    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
+    const char* home = std::getenv("HOME");
+    if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
+
+    entity_resolution::ResolutionRequest source_request;
+    source_request.query = intent.name;
+    if (intent.entity_type == "file") {
+        source_request.expected_type = entity_resolution::EntityType::File;
+    } else if (intent.entity_type == "folder") {
+        source_request.expected_type = entity_resolution::EntityType::Folder;
+    }
+
+    const std::filesystem::path requested(intent.name);
+    std::filesystem::path resolved_path;
+    if (requested.is_absolute()) resolved_path = requested;
+    else {
+        const auto home_path = std::filesystem::path(home) / requested;
+        if (platform_.filesystem().exists(home_path.string())) resolved_path = home_path;
+    }
+
+    if (!resolved_path.empty() && platform_.filesystem().exists(resolved_path.string())) {
+        source_request.query = resolved_path.filename().string();
+        std::error_code type_error;
+        const bool directory = std::filesystem::is_directory(resolved_path, type_error);
+        if (!type_error) {
+            const auto type = directory ? entity_resolution::EntityType::Folder
+                                        : entity_resolution::EntityType::File;
+            if (source_request.expected_type == entity_resolution::EntityType::Unknown ||
+                source_request.expected_type == type) {
+                source_request.candidates.push_back({
+                    resolved_path.string(), resolved_path.filename().string(), type,
+                    resolved_path.parent_path().string(), "linux.filesystem", true, 0
+                });
+            }
+        }
+    } else {
+        const std::vector<std::filesystem::path> roots{
+            home,
+            std::filesystem::path(home) / "Desktop",
+            std::filesystem::path(home) / "Documents",
+            std::filesystem::path(home) / "Downloads"
+        };
+        for (const auto& root : roots) {
+            std::string list_error;
+            const auto entries = platform_.filesystem().list(root.string(), list_error);
+            for (const auto& entry : entries) {
+                const auto type = entry.directory ? entity_resolution::EntityType::Folder
+                                                  : entity_resolution::EntityType::File;
+                if (source_request.expected_type != entity_resolution::EntityType::Unknown &&
+                    source_request.expected_type != type) continue;
+                source_request.candidates.push_back({
+                    entry.path, entry.name, type, root.string(),
+                    "linux.filesystem", true, 0
+                });
+            }
+        }
+    }
+
+    const auto match = entity_resolver_.resolve(std::move(source_request));
+    if (match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+        return needs_choice(request.request_id, "delete target");
+    }
+    if (match.status != entity_resolution::ResolutionStatus::Found) {
+        return failure(request.request_id, "The file or folder to delete could not be found.");
+    }
+
+    const auto path = match.selected.id;
+    permissions::PermissionRequest permission_request;
+    permission_request.capability_id = "filesystem.delete";
+    permission_request.operation = "delete_path";
+    permission_request.resource_path = path;
+    permission_request.destructive = true;
+    const auto confirmation = request.input_data.find("confirmed");
+    permission_request.user_confirmed =
+        confirmation != request.input_data.end() && confirmation->second == "yes";
+
+    const auto permission = permission_manager_.authorize(permission_request);
+    if (permission.decision == permissions::PermissionDecision::RequiresConfirmation) {
+        SubsystemResult result;
+        result.request_id = request.request_id;
+        result.status = SubsystemStatus::NeedsPermission;
+        result.error = permission.reason;
+        result.result_data["confirmation_action"] = "delete";
+        result.result_data["path"] = path;
+        return result;
+    }
+    if (permission.decision != permissions::PermissionDecision::Allowed) {
+        return failure(request.request_id, permission.reason);
+    }
+
+    planning::PlanningRequest planning_request;
+    planning_request.goal = "Delete " + path;
+    planning::TaskDraft draft;
+    draft.id = "delete-target";
+    draft.operation = "delete_path";
+    draft.input_data["path"] = path;
+    planning_request.tasks.push_back(std::move(draft));
+    auto plan = planning_engine_.create_plan(planning_request);
+    if (!plan.valid || plan.tasks.empty()) {
+        return failure(request.request_id, "Unable to create a valid deletion plan.");
+    }
+    if (!plan_state_manager_.start(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The deletion task could not enter the running state.");
+    }
+
+    execution::ExecutionRequest execution_request;
+    execution_request.task_id = request.task_id;
+    execution_request.operation = "delete_path";
+    execution_request.input_data = plan.tasks.front().input_data;
+    execution_request.requires_authorization = true;
+    execution_request.authorization_granted = true;
+    const auto executed = execution_engine_.execute(execution_request);
+    if (executed.status != execution::ExecutionStatus::Success) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        return failure(request.request_id, executed.error);
+    }
+    plan_state_manager_.complete(plan, plan.tasks.front().id);
+
+    verification::VerificationRequest verification_request;
+    verification_request.operation = "delete_path";
+    verification_request.expected["exists"] = "false";
+    verification_request.actual["exists"] =
+        platform_.filesystem().exists(path) ? "true" : "false";
+    if (!verification_system_.verify(verification_request).verified) {
+        return failure(request.request_id, "The delete action ran, but verification did not pass.");
+    }
+
+    SubsystemResult result;
+    result.request_id = request.request_id;
+    result.status = SubsystemStatus::Success;
+    result.result_data["operation"] = "delete";
+    result.result_data["entity_type"] = intent.entity_type;
+    result.result_data["name"] = std::filesystem::path(path).filename().string();
+    result.result_data["path"] = path;
+    result.result_data["verified"] = "true";
+    return result;
+}
+
 SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     const auto raw = request.input_data.find("raw_input");
     if (raw == request.input_data.end() || raw->second.empty()) {
@@ -727,6 +879,9 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     if (intent.operation == "rename" || intent.operation == "move" ||
         intent.operation == "copy") {
         return modify_path(request, intent);
+    }
+    if (intent.operation == "delete") {
+        return delete_target(request, intent);
     }
     return failure(request.request_id,
         "The current end-to-end workflow supports folder creation, opening applications or folders, scoped directory searches, and basic rename, move, and file-copy operations.");
