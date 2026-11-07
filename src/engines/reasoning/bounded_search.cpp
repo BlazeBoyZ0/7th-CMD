@@ -10,6 +10,7 @@ std::vector<Fact> BoundedSearch::collect_relevant(
         if (matches.size() >= max_candidates) break;
         if (!fact.fresh || fact.subject != query.subject ||
             fact.property != query.property) continue;
+        if (query.match_value && fact.value != query.value) continue;
         matches.push_back(fact);
     }
     return matches;

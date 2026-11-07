@@ -40,6 +40,14 @@ add_executable(7thcmd
     src/engines/reasoning/rule_evaluator.cpp
     src/engines/reasoning/truth_evaluator.cpp
     src/engines/reasoning/uncertainty_handler.cpp
+    src/engines/planning/dependency_analyzer.cpp
+    src/engines/planning/goal_decomposer.cpp
+    src/engines/planning/operation_orderer.cpp
+    src/engines/planning/plan_optimizer.cpp
+    src/engines/planning/plan_state_manager.cpp
+    src/engines/planning/plan_validator.cpp
+    src/engines/planning/planning_engine.cpp
+    src/engines/planning/task_breakdown.cpp
     src/orchestrator/orchestrator.cpp
 )
 
