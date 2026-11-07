@@ -14,6 +14,8 @@ option(SEVENTH_CMD_BUILD_TESTS "Build 7th cmd tests" ON)
 
 add_executable(7thcmd
     src/main.cpp
+    src/core/constants.cpp
+    src/core/errors.cpp
     src/core/identifiers.cpp
     src/core/status.cpp
     src/core/subsystem.cpp
@@ -37,6 +39,7 @@ add_executable(7thcmd
     src/engines/reasoning/contradiction_handler.cpp
     src/engines/reasoning/fact_resolver.cpp
     src/engines/reasoning/reasoning_engine.cpp
+    src/engines/reasoning/reasoning_trace.cpp
     src/engines/reasoning/rule_evaluator.cpp
     src/engines/reasoning/truth_evaluator.cpp
     src/engines/reasoning/uncertainty_handler.cpp
@@ -99,6 +102,10 @@ add_executable(7thcmd
     src/orchestrator/subsystem_router.cpp
     src/orchestrator/task_state_manager.cpp
     src/orchestrator/workflow_controller.cpp
+    src/utilities/json_loader.cpp
+    src/utilities/logger.cpp
+    src/utilities/path_utils.cpp
+    src/utilities/string_utils.cpp
 )
 
 target_include_directories(7thcmd PRIVATE include)
