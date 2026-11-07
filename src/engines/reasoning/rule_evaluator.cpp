@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 namespace seventh::reasoning {
 namespace {
@@ -59,23 +60,28 @@ RuleEvaluation RuleEvaluator::evaluate(const std::vector<Rule>& rules,
                                         std::size_t budget) const {
     RuleEvaluation result;
     std::vector<Fact> known = facts;
+    std::vector<bool> fired(rules.size(), false);
 
-    // Revisit rules when a new conclusion is added, allowing bounded,
-    // deterministic multi-step deductions without recursive rule execution.
+    // Revisit unresolved rules only when another rule adds a fact. A rule
+    // that has already fired cannot add anything new on a later pass.
     bool added_fact = true;
     while (added_fact) {
         added_fact = false;
 
-        for (const auto& rule : rules) {
+        for (std::size_t index = 0; index < rules.size(); ++index) {
+            if (fired[index]) continue;
             if (result.evaluations >= budget) {
                 result.budget_exhausted = true;
                 return result;
             }
+
             ++result.evaluations;
+            const auto& rule = rules[index];
 
             if (rule.premises.empty() ||
                 rule.conclusion.subject.empty() ||
                 rule.conclusion.property.empty()) {
+                fired[index] = true;
                 continue;
             }
 
@@ -99,6 +105,7 @@ RuleEvaluation RuleEvaluator::evaluate(const std::vector<Rule>& rules,
                 [&](const Fact& existing) {
                     return same_fact(existing, conclusion);
                 });
+            fired[index] = true;
             if (duplicate != known.end()) continue;
 
             known.push_back(conclusion);
