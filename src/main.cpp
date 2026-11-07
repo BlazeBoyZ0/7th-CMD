@@ -1,9 +1,11 @@
 #include "seventh/cli/command_line.hpp"
 #include "seventh/cli/input_handler.hpp"
 #include "seventh/cli/terminal_output.hpp"
-#include "seventh/engines/grammar/grammar_engine.hpp"
+#include "seventh/engines/grammar/grammar_subsystem.hpp"
+#include "seventh/orchestrator/orchestrator.hpp"
 
 #include <iostream>
+#include <memory>
 #include <string>
 
 int main(int argc, char* argv[]) {
@@ -25,8 +27,10 @@ int main(int argc, char* argv[]) {
     seventh::cli::print_startup_message();
     std::cout << "Type an instruction, or 'exit' to quit.\n";
 
+    seventh::Orchestrator orchestrator;
+    orchestrator.register_subsystem(
+        std::make_shared<seventh::grammar::GrammarSubsystem>());
     seventh::cli::InputHandler input_handler;
-    seventh::grammar::GrammarEngine grammar_engine;
 
     while (true) {
         std::cout << "7thcmd> " << std::flush;
@@ -34,25 +38,34 @@ int main(int argc, char* argv[]) {
         if (input.empty()) break;
         if (input == "exit" || input == "quit") break;
 
-        const auto intent = grammar_engine.interpret(input);
-        if (!intent.valid) {
-            seventh::cli::print_error(intent.error.empty()
-                ? "I could not interpret that instruction."
-                : intent.error);
-            for (const auto& missing : intent.missing_information) {
+        auto outcome = orchestrator.execute(
+            "interpret", {{"raw_input", input}});
+
+        if (outcome.result.status == seventh::SubsystemStatus::Failure) {
+            seventh::cli::print_error(outcome.result.error.empty()
+                ? "The request could not be processed."
+                : outcome.result.error);
+            continue;
+        }
+
+        if (outcome.result.status == seventh::SubsystemStatus::NeedsInformation) {
+            seventh::cli::print_error("I need more information:");
+            for (const auto& missing : outcome.result.missing_information) {
                 std::cout << "  Missing: " << missing << '\n';
             }
             continue;
         }
 
+        const auto& data = outcome.result.result_data;
         std::cout << "Understood request:\n"
-                  << "  Operation: " << intent.operation << '\n'
-                  << "  Target type: " << intent.entity_type << '\n';
-        if (!intent.name.empty()) std::cout << "  Name: " << intent.name << '\n';
-        if (!intent.source.empty()) std::cout << "  Source: " << intent.source << '\n';
-        if (!intent.destination.empty()) std::cout << "  Destination: " << intent.destination << '\n';
-        if (!intent.query.empty()) std::cout << "  Query: " << intent.query << '\n';
-        std::cout << "  Status: interpreted; execution is not connected yet.\n";
+                  << "  Operation: " << data.at("operation") << '\n'
+                  << "  Target type: " << data.at("entity_type") << '\n';
+        if (!data.at("name").empty()) std::cout << "  Name: " << data.at("name") << '\n';
+        if (!data.at("source").empty()) std::cout << "  Source: " << data.at("source") << '\n';
+        if (!data.at("destination").empty()) std::cout << "  Destination: " << data.at("destination") << '\n';
+        if (!data.at("query").empty()) std::cout << "  Query: " << data.at("query") << '\n';
+        std::cout << "  Task: " << outcome.task_id << '\n'
+                  << "  State: completed (interpretation only; no OS action executed)\n";
     }
 
     std::cout << "Goodbye.\n";

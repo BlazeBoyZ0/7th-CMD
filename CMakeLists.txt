@@ -31,6 +31,8 @@ add_executable(7thcmd
     src/engines/grammar/semantic_analyzer.cpp
     src/engines/grammar/cir_generator.cpp
     src/engines/grammar/grammar_engine.cpp
+    src/engines/grammar/grammar_subsystem.cpp
+    src/orchestrator/orchestrator.cpp
 )
 
 target_include_directories(7thcmd PRIVATE include)
