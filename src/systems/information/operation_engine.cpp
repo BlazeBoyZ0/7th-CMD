@@ -161,6 +161,20 @@ DataResult OperationEngine::execute(const DataRequest& request,
         }
         result.scalar = format_number(aggregate);
 
+    } else if (operation == "add" || operation == "subtract") {
+        const auto left = TypeSystem::number(request.value);
+        const auto right = TypeSystem::number(request.second_value);
+        if (!left || !right) {
+            result.error = "add/subtract requires two finite numeric values.";
+            return result;
+        }
+        const double value = operation == "add" ? *left + *right : *left - *right;
+        if (!std::isfinite(value)) {
+            result.error = "The numeric result is outside the supported range.";
+            return result;
+        }
+        result.scalar = format_number(value);
+
     } else if (operation == "compare" || operation == "compare_values") {
         const auto left = TypeSystem::number(request.value);
         const auto right = TypeSystem::number(request.second_value);

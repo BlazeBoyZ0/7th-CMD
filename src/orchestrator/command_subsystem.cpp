@@ -598,6 +598,7 @@ SubsystemResult CommandSubsystem::open_target(
     permission_request.capability_id = capability_id;
     permission_request.operation = operation;
     if (operation == "open_path") permission_request.resource_path = operation_data["path"];
+    permission_request.modifies_state = operation == "launch_application";
     const auto permission = permission_manager_.authorize(permission_request);
     if (permission.decision != permissions::PermissionDecision::Allowed) {
         SubsystemResult result;
