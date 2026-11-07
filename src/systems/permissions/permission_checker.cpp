@@ -10,12 +10,14 @@ bool PermissionChecker::path_is_allowed(
     if (path.empty()) return capability.allowed_roots.empty();
     if (capability.allowed_roots.empty()) return false;
 
-    const auto target = std::filesystem::path(path).lexically_normal();
-    if (!target.is_absolute()) return false;
+    std::error_code error;
+    const auto target = std::filesystem::weakly_canonical(path, error);
+    if (error) return false;
 
     for (const auto& root_text : capability.allowed_roots) {
-        const auto root = std::filesystem::path(root_text).lexically_normal();
-        if (!root.is_absolute()) continue;
+        error.clear();
+        const auto root = std::filesystem::weakly_canonical(root_text, error);
+        if (error) continue;
 
         auto target_part = target.begin();
         auto root_part = root.begin();

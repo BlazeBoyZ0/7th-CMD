@@ -84,6 +84,11 @@ add_executable(7thcmd
     src/systems/verification/verification_system.cpp
     src/systems/response/response_formatter.cpp
     src/systems/response/response_generator.cpp
+    src/platform/linux/filesystem/linux_filesystem.cpp
+    src/platform/linux/applications/linux_applications.cpp
+    src/platform/linux/processes/linux_processes.cpp
+    src/platform/linux/system/linux_system.cpp
+    src/platform/linux/linux_platform.cpp
     src/orchestrator/cancellation_handler.cpp
     src/orchestrator/interaction_coordinator.cpp
     src/orchestrator/orchestrator.cpp
