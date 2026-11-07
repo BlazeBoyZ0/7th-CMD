@@ -8,6 +8,7 @@
 #include "seventh/systems/information/platform_data_providers.hpp"
 #include "seventh/systems/information/provider_registry.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cctype>
 #include <cstdlib>
