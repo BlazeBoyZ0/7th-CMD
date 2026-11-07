@@ -39,6 +39,17 @@ Run the CLI:
 
 Use `./build/7thcmd --help` for command-line options and `./build/7thcmd --version` to print the version.
 
+## Debian package
+
+CMake is configured to generate a Debian package:
+
+```bash
+cd build
+cpack -G DEB
+```
+
+For the current project version, the package filename is `7thcmd-v0-1-0.deb`. The filename automatically follows the project version, so a future 1.0.0 release will use `7thcmd-v1-0-0.deb`.
+
 The grammar configuration is loaded from `config/grammar` when running from the repository root. Installed builds also check `/usr/local/share/7thcmd/config/grammar` and `/usr/share/7thcmd/config/grammar`.
 
 ## Current command scope
