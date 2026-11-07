@@ -632,7 +632,7 @@ SubsystemResult CommandSubsystem::search_items(
     if (!search.success) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
             return failure(request.request_id,
-                executed.error + " The plan state could not be marked failed.");
+                "The search provider failed and the plan state could not be marked failed.");
         }
         return failure(request.request_id, search.error);
     }
@@ -656,17 +656,21 @@ SubsystemResult CommandSubsystem::search_items(
         ++displayed;
     }
 
-    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id, "The search plan could not be marked complete.");
-    }
-
     verification::VerificationRequest verification_request;
     verification_request.operation = "search_files";
     verification_request.expected["exists"] = "true";
     verification_request.actual["exists"] =
         std::filesystem::is_directory(directory, ec) && !ec ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "Search verification failed and the plan state could not be marked failed.");
+        }
         return failure(request.request_id, "The search result could not be verified.");
+    }
+
+    if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The search plan could not be marked complete.");
     }
 
     SubsystemResult result;
