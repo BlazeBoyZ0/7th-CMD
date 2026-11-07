@@ -78,6 +78,28 @@ CommandSubsystem::CommandSubsystem(
     }
     capabilities_.register_capability(std::move(search_files));
 
+    capabilities::CapabilityDefinition rename_path;
+    rename_path.id = "filesystem.rename";
+    rename_path.description = "Rename or move a filesystem entry inside the user's home directory.";
+    rename_path.operations = {"rename_path"};
+    rename_path.enabled = true;
+    rename_path.read_only = false;
+    if (const char* home = std::getenv("HOME")) {
+        rename_path.allowed_roots.emplace_back(home);
+    }
+    capabilities_.register_capability(std::move(rename_path));
+
+    capabilities::CapabilityDefinition copy_file;
+    copy_file.id = "filesystem.copy";
+    copy_file.description = "Copy a file inside the user's home directory.";
+    copy_file.operations = {"copy_file"};
+    copy_file.enabled = true;
+    copy_file.read_only = false;
+    if (const char* home = std::getenv("HOME")) {
+        copy_file.allowed_roots.emplace_back(home);
+    }
+    capabilities_.register_capability(std::move(copy_file));
+
     capabilities::CapabilityDefinition launch_application;
     launch_application.id = "application.launch";
     launch_application.description = "Launch an installed desktop application.";
@@ -491,6 +513,175 @@ SubsystemResult CommandSubsystem::search_items(
     return result;
 }
 
+
+SubsystemResult CommandSubsystem::modify_path(
+    const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
+    const char* home = std::getenv("HOME");
+    if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
+
+    const std::vector<std::filesystem::path> roots{
+        home,
+        std::filesystem::path(home) / "Desktop",
+        std::filesystem::path(home) / "Documents",
+        std::filesystem::path(home) / "Downloads"
+    };
+
+    entity_resolution::ResolutionRequest source_request;
+    source_request.query = intent.source;
+    if (intent.entity_type == "file") {
+        source_request.expected_type = entity_resolution::EntityType::File;
+    } else if (intent.entity_type == "folder") {
+        source_request.expected_type = entity_resolution::EntityType::Folder;
+    }
+
+    const std::filesystem::path source_as_path(intent.source);
+    if (source_as_path.is_absolute() && platform_.filesystem().exists(intent.source)) {
+        std::error_code type_error;
+        const bool is_directory = std::filesystem::is_directory(source_as_path, type_error);
+        if (!type_error) {
+            const auto type = is_directory ? entity_resolution::EntityType::Folder
+                                           : entity_resolution::EntityType::File;
+            if (source_request.expected_type == entity_resolution::EntityType::Unknown ||
+                source_request.expected_type == type) {
+                source_request.candidates.push_back({
+                    intent.source, source_as_path.filename().string(), type,
+                    source_as_path.parent_path().string(), "linux.filesystem", true, 0
+                });
+            }
+        }
+    } else {
+        for (const auto& root : roots) {
+            std::string list_error;
+            const auto entries = platform_.filesystem().list(root.string(), list_error);
+            for (const auto& entry : entries) {
+                const auto type = entry.directory ? entity_resolution::EntityType::Folder
+                                                  : entity_resolution::EntityType::File;
+                if (source_request.expected_type != entity_resolution::EntityType::Unknown &&
+                    source_request.expected_type != type) continue;
+                source_request.candidates.push_back({
+                    entry.path, entry.name, type, root.string(),
+                    "linux.filesystem", true, 0
+                });
+            }
+        }
+    }
+
+    const auto source_match = entity_resolver_.resolve(std::move(source_request));
+    if (source_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+        return needs_choice(request.request_id, "source");
+    }
+    if (source_match.status != entity_resolution::ResolutionStatus::Found) {
+        return failure(request.request_id, "The source file or folder could not be found.");
+    }
+
+    const auto source_path = std::filesystem::path(source_match.selected.id);
+    std::filesystem::path destination_path;
+    std::string capability_id;
+    std::string execution_operation;
+
+    if (intent.operation == "rename") {
+        const std::filesystem::path new_name(intent.destination);
+        if (new_name.empty() || new_name.is_absolute() || new_name.has_parent_path() ||
+            intent.destination == "." || intent.destination == "..") {
+            return failure(request.request_id, "The new name must be a single path component.");
+        }
+        destination_path = source_path.parent_path() / new_name;
+        capability_id = "filesystem.rename";
+        execution_operation = "rename_path";
+    } else {
+        const auto destination_directory = resolve_destination(intent.destination);
+        std::error_code ec;
+        if (destination_directory.empty() ||
+            !std::filesystem::is_directory(destination_directory, ec) || ec) {
+            return failure(request.request_id, "The destination directory could not be resolved.");
+        }
+        destination_path = std::filesystem::path(destination_directory) /
+                           source_path.filename();
+        capability_id = intent.operation == "copy"
+            ? "filesystem.copy" : "filesystem.rename";
+        execution_operation = intent.operation == "copy"
+            ? "copy_file" : "rename_path";
+    }
+
+    permissions::PermissionRequest source_permission;
+    source_permission.capability_id = capability_id;
+    source_permission.operation = execution_operation;
+    source_permission.resource_path = source_path.string();
+    const auto source_allowed = permission_manager_.authorize(source_permission);
+    if (source_allowed.decision != permissions::PermissionDecision::Allowed) {
+        return failure(request.request_id, source_allowed.reason);
+    }
+
+    permissions::PermissionRequest destination_permission;
+    destination_permission.capability_id = capability_id;
+    destination_permission.operation = execution_operation;
+    destination_permission.resource_path = destination_path.string();
+    const auto destination_allowed = permission_manager_.authorize(destination_permission);
+    if (destination_allowed.decision != permissions::PermissionDecision::Allowed) {
+        return failure(request.request_id, destination_allowed.reason);
+    }
+
+    planning::PlanningRequest planning_request;
+    planning_request.goal = intent.operation + " " + source_path.string() +
+                           " to " + destination_path.string();
+    planning::TaskDraft draft;
+    draft.id = "modify-path";
+    draft.operation = execution_operation;
+    draft.input_data["source"] = source_path.string();
+    draft.input_data["destination"] = destination_path.string();
+    planning_request.tasks.push_back(std::move(draft));
+    auto plan = planning_engine_.create_plan(planning_request);
+    if (!plan.valid || plan.tasks.empty()) {
+        return failure(request.request_id, "Unable to create a valid filesystem plan.");
+    }
+    if (!plan_state_manager_.start(plan, plan.tasks.front().id)) {
+        return failure(request.request_id, "The filesystem task could not enter the running state.");
+    }
+
+    execution::ExecutionRequest execution_request;
+    execution_request.task_id = request.task_id;
+    execution_request.operation = execution_operation;
+    execution_request.input_data = plan.tasks.front().input_data;
+    execution_request.requires_authorization = true;
+    execution_request.authorization_granted = true;
+    const auto executed = execution_engine_.execute(execution_request);
+    if (executed.status != execution::ExecutionStatus::Success) {
+        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        return failure(request.request_id, executed.error);
+    }
+    plan_state_manager_.complete(plan, plan.tasks.front().id);
+
+    verification::VerificationRequest verification_request;
+    verification_request.operation = execution_operation;
+    verification_request.expected["destination_exists"] = "true";
+    verification_request.actual["destination_exists"] =
+        platform_.filesystem().exists(destination_path.string()) ? "true" : "false";
+    if (intent.operation != "copy") {
+        verification_request.expected["source_exists"] = "false";
+        verification_request.actual["source_exists"] =
+            platform_.filesystem().exists(source_path.string()) ? "true" : "false";
+    } else {
+        verification_request.expected["source_exists"] = "true";
+        verification_request.actual["source_exists"] =
+            platform_.filesystem().exists(source_path.string()) ? "true" : "false";
+    }
+    if (!verification_system_.verify(verification_request).verified) {
+        return failure(request.request_id,
+            "The filesystem operation ran, but verification did not pass.");
+    }
+
+    SubsystemResult result;
+    result.request_id = request.request_id;
+    result.status = SubsystemStatus::Success;
+    result.result_data["operation"] = intent.operation;
+    result.result_data["entity_type"] = intent.entity_type;
+    result.result_data["name"] = destination_path.filename().string();
+    result.result_data["source"] = source_path.string();
+    result.result_data["destination"] = destination_path.string();
+    result.result_data["verified"] = "true";
+    return result;
+}
+
 SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     const auto raw = request.input_data.find("raw_input");
     if (raw == request.input_data.end() || raw->second.empty()) {
@@ -521,6 +712,10 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     }
     if (intent.operation == "search") {
         return search_items(request, intent);
+    }
+    if (intent.operation == "rename" || intent.operation == "move" ||
+        intent.operation == "copy") {
+        return modify_path(request, intent);
     }
     return failure(request.request_id,
         "The current end-to-end workflow supports folder creation, opening applications or folders, and scoped directory searches.");

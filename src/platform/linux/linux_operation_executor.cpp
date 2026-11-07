@@ -31,12 +31,37 @@ bool LinuxOperationExecutor::supports(
     return request.operation == "create_directory" ||
            request.operation == "launch_application" ||
            request.operation == "open_path" ||
-           request.operation == "search_files";
+           request.operation == "search_files" ||
+           request.operation == "rename_path" ||
+           request.operation == "copy_file";
 }
 
 execution::ExecutionResult LinuxOperationExecutor::execute(
     const execution::ExecutionRequest& request) {
     execution::ExecutionResult result;
+    if (request.operation == "rename_path" || request.operation == "copy_file") {
+        const auto source = request.input_data.find("source");
+        const auto destination = request.input_data.find("destination");
+        if (source == request.input_data.end() || destination == request.input_data.end() ||
+            source->second.empty() || destination->second.empty()) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "A source and destination path are required.";
+            return result;
+        }
+        const auto operation = request.operation == "rename_path"
+            ? platform_.filesystem().rename(source->second, destination->second)
+            : platform_.filesystem().copy(source->second, destination->second);
+        if (!operation.success) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = operation.error;
+            return result;
+        }
+        result.status = execution::ExecutionStatus::Success;
+        result.output_data["source"] = source->second;
+        result.output_data["destination"] = destination->second;
+        return result;
+    }
+
     if (request.operation == "create_directory") {
         const auto path = request.input_data.find("path");
         if (path == request.input_data.end() || path->second.empty()) {
