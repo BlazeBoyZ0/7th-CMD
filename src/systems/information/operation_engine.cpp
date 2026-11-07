@@ -6,9 +6,11 @@
 #include <cctype>
 #include <iomanip>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace seventh::information {

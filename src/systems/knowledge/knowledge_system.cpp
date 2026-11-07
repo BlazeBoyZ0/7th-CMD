@@ -291,8 +291,10 @@ bool KnowledgeSystem::save(std::string& error) const {
 
     std::filesystem::rename(temporary, destination, fs_error);
     if (fs_error) {
-        std::filesystem::remove(temporary, fs_error);
-        error = "Unable to replace the knowledge file: " + fs_error.message();
+        const auto rename_message = fs_error.message();
+        std::error_code cleanup_error;
+        std::filesystem::remove(temporary, cleanup_error);
+        error = "Unable to replace the knowledge file: " + rename_message;
         return false;
     }
 
