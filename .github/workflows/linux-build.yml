@@ -1,0 +1,30 @@
+name: Linux Build
+
+on:
+  push:
+    branches:
+      - v0.1-gpt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DSEVENTH_CMD_BUILD_TESTS=ON
+
+      - name: Compile
+        run: cmake --build build --parallel 2
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Build Debian package
+        working-directory: build
+        run: cpack -G DEB
