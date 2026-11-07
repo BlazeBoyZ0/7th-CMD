@@ -199,6 +199,11 @@ void CommandSubsystem::remember_folder(
     auto& session = context_manager_.create("session");
     const auto key = "folder:" + lower(name);
     const auto ambiguous_key = "ambiguous:" + key;
+    session.values["last_entity.type"] = "folder";
+    session.values["last_entity.name"] = name;
+    session.values["last_entity.path"] = path;
+    session.values.erase("last_entity.id");
+
     if (session.values.contains(ambiguous_key)) return;
     const auto previous = session.values.find(key);
     if (previous != session.values.end() && previous->second != path) {
@@ -207,10 +212,6 @@ void CommandSubsystem::remember_folder(
         return;
     }
     session.values[key] = path;
-    session.values["last_entity.type"] = "folder";
-    session.values["last_entity.name"] = name;
-    session.values["last_entity.path"] = path;
-    session.values.erase("last_entity.id");
 }
 
 SubsystemResult CommandSubsystem::create_folder(
@@ -362,7 +363,9 @@ SubsystemResult CommandSubsystem::open_target(
         const auto type = session->values.at("last_entity.type");
         if (type == "folder" && session->values.contains("last_entity.path")) {
             const auto path = session->values.at("last_entity.path");
-            if (!platform_.filesystem().exists(path)) {
+            std::error_code context_error;
+            if (!platform_.filesystem().exists(path) ||
+                !std::filesystem::is_directory(path, context_error) || context_error) {
                 return failure(request.request_id,
                     "The previously referenced folder is no longer available.");
             }
