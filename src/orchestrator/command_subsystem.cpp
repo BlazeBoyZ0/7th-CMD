@@ -42,16 +42,25 @@ SubsystemResult needs_choice(const RequestId& id, const std::string& kind) {
 }
 std::vector<std::string> split_instruction_chain(const std::string& input) {
     const auto lowered = lower(input);
-    const std::string delimiter = lowered.find(" and then ") != std::string::npos
-        ? " and then " : " then ";
     std::vector<std::string> clauses;
     std::size_t start = 0;
-    while (true) {
-        const auto position = lowered.find(delimiter, start);
+    while (start < input.size()) {
+        const auto and_then = lowered.find(" and then ", start);
+        const auto then = lowered.find(" then ", start);
+        std::size_t position = std::string::npos;
+        std::size_t delimiter_size = 0;
+        if (and_then != std::string::npos &&
+            (then == std::string::npos || and_then <= then)) {
+            position = and_then;
+            delimiter_size = 10;
+        } else if (then != std::string::npos) {
+            position = then;
+            delimiter_size = 6;
+        }
         if (position == std::string::npos) break;
         const auto clause = input.substr(start, position - start);
         if (!clause.empty()) clauses.push_back(clause);
-        start = position + delimiter.size();
+        start = position + delimiter_size;
     }
     const auto final_clause = input.substr(start);
     if (!final_clause.empty()) clauses.push_back(final_clause);
@@ -1053,12 +1062,19 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         }
 
         std::string destination;
+        bool planned_destination = false;
         const auto local = local_paths.find(intent.destination);
-        if (local != local_paths.end()) destination = local->second;
-        else destination = resolve_destination(intent.destination);
+        if (local != local_paths.end()) {
+            destination = local->second;
+            planned_destination = true;
+        } else {
+            destination = resolve_destination(intent.destination);
+        }
 
         std::error_code ec;
-        if (destination.empty() || !std::filesystem::is_directory(destination, ec) || ec) {
+        if (destination.empty() ||
+            (!planned_destination &&
+             (!std::filesystem::is_directory(destination, ec) || ec))) {
             return failure(request.request_id,
                 "A folder destination does not exist or could not be resolved.");
         }
@@ -1169,7 +1185,12 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     result.result_data["operation"] = "create_chain";
     result.result_data["entity_type"] = "folder";
     result.result_data["count"] = std::to_string(completed);
-    result.result_data["paths"] = utilities::join(target_paths, "\n");
+    std::string joined_paths;
+    for (const auto& path : target_paths) {
+        if (!joined_paths.empty()) joined_paths += '\n';
+        joined_paths += path;
+    }
+    result.result_data["paths"] = std::move(joined_paths);
     result.result_data["path"] = target_paths.back();
     result.result_data["name"] = folder_names.back();
     result.result_data["verified"] = "true";

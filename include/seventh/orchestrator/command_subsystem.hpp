@@ -14,6 +14,7 @@
 #include "seventh/systems/verification/verification_system.hpp"
 
 #include <map>
+#include <vector>
 
 namespace seventh {
 
