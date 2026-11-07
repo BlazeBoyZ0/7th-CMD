@@ -237,32 +237,83 @@ SubsystemResult CommandSubsystem::create_folder(
 
 SubsystemResult CommandSubsystem::open_target(
     const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
-    std::string app_error;
-    const auto applications = platform_.applications().list(app_error);
-    entity_resolution::ResolutionRequest app_request;
-    app_request.query = intent.name;
-    app_request.expected_type = entity_resolution::EntityType::Application;
-    for (const auto& app : applications) {
-        app_request.candidates.push_back({
-            app.id, app.name, entity_resolution::EntityType::Application,
-            app.desktop_file, "linux.desktop", true, 0
-        });
-    }
-
-    auto app_match = entity_resolver_.resolve(app_request);
     std::optional<platform::ApplicationEntry> selected_app;
-    if (app_match.status == entity_resolution::ResolutionStatus::Found) {
-        selected_app = platform_.applications().find(app_match.selected.id);
-    } else if (lower(intent.name) == "browser") {
-        selected_app = platform_.applications().find_default("browser");
-        if (selected_app) {
-            app_request.query = selected_app->name;
-            app_request.candidates = {{
-                selected_app->id, selected_app->name,
-                entity_resolution::EntityType::Application,
-                selected_app->desktop_file, "xdg.default", true, 0
-            }};
-            app_match = entity_resolver_.resolve(app_request);
+    std::optional<entity_resolution::EntityCandidate> selected_folder;
+    const auto wanted = lower(intent.name);
+
+    if (wanted == "browser") {
+        selected_app = platform_.applications().find("browser");
+        if (!selected_app) selected_app = platform_.applications().find_default("browser");
+        if (!selected_app) {
+            return failure(request.request_id,
+                "No default browser is configured on this system.");
+        }
+
+        entity_resolution::ResolutionRequest default_request;
+        default_request.query = selected_app->name;
+        default_request.expected_type = entity_resolution::EntityType::Application;
+        default_request.candidates.push_back({
+            selected_app->id, selected_app->name,
+            entity_resolution::EntityType::Application,
+            selected_app->desktop_file, "xdg.default", true, 0
+        });
+        const auto resolved = entity_resolver_.resolve(std::move(default_request));
+        if (resolved.status != entity_resolution::ResolutionStatus::Found) {
+            return failure(request.request_id,
+                "The configured default browser could not be resolved.");
+        }
+    } else {
+        const char* home = std::getenv("HOME");
+        if (!home) return failure(request.request_id,
+            "The user's home directory is unavailable.");
+
+        const std::vector<std::filesystem::path> roots{
+            home,
+            std::filesystem::path(home) / "Desktop",
+            std::filesystem::path(home) / "Documents",
+            std::filesystem::path(home) / "Downloads"
+        };
+        entity_resolution::ResolutionRequest folder_request;
+        folder_request.query = intent.name;
+        folder_request.expected_type = entity_resolution::EntityType::Folder;
+
+        for (const auto& root : roots) {
+            std::string list_error;
+            const auto entries = platform_.filesystem().list(root.string(), list_error);
+            for (const auto& entry : entries) {
+                if (!entry.directory || lower(entry.name) != wanted) continue;
+                folder_request.candidates.push_back({
+                    entry.path, entry.name, entity_resolution::EntityType::Folder,
+                    root.string(), "linux.filesystem", true, 0
+                });
+            }
+        }
+
+        const auto folder_match = entity_resolver_.resolve(std::move(folder_request));
+        if (folder_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+            return needs_choice(request.request_id, "folder");
+        }
+        if (folder_match.status == entity_resolution::ResolutionStatus::Found) {
+            selected_folder = folder_match.selected;
+        } else {
+            std::string app_error;
+            const auto applications = platform_.applications().list(app_error);
+            entity_resolution::ResolutionRequest app_request;
+            app_request.query = intent.name;
+            app_request.expected_type = entity_resolution::EntityType::Application;
+            for (const auto& app : applications) {
+                app_request.candidates.push_back({
+                    app.id, app.name, entity_resolution::EntityType::Application,
+                    app.desktop_file, "linux.desktop", true, 0
+                });
+            }
+            const auto app_match = entity_resolver_.resolve(std::move(app_request));
+            if (app_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
+                return needs_choice(request.request_id, "application");
+            }
+            if (app_match.status == entity_resolution::ResolutionStatus::Found) {
+                selected_app = platform_.applications().find(app_match.selected.id);
+            }
         }
     }
 
@@ -272,56 +323,21 @@ SubsystemResult CommandSubsystem::open_target(
     std::string entity_type;
     std::string resolved_name;
 
-    if (selected_app && app_match.status == entity_resolution::ResolutionStatus::Found) {
+    if (selected_folder) {
+        operation = "open_path";
+        operation_data["path"] = selected_folder->id;
+        capability_id = "filesystem.open_path";
+        entity_type = "folder";
+        resolved_name = selected_folder->name;
+    } else if (selected_app) {
         operation = "launch_application";
         operation_data["application_id"] = selected_app->id;
         capability_id = "application.launch";
         entity_type = "application";
         resolved_name = selected_app->name;
     } else {
-        if (app_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-            return needs_choice(request.request_id, "application");
-        }
-
-        const char* home = std::getenv("HOME");
-        if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
-        const std::vector<std::filesystem::path> roots{
-            home,
-            std::filesystem::path(home) / "Desktop",
-            std::filesystem::path(home) / "Documents",
-            std::filesystem::path(home) / "Downloads"
-        };
-
-        entity_resolution::ResolutionRequest folder_request;
-        folder_request.query = intent.name;
-        folder_request.expected_type = entity_resolution::EntityType::Folder;
-        for (const auto& root : roots) {
-            std::string list_error;
-            const auto entries = platform_.filesystem().list(root.string(), list_error);
-            for (const auto& entry : entries) {
-                if (!entry.directory) continue;
-                folder_request.candidates.push_back({
-                    entry.path, entry.name, entity_resolution::EntityType::Folder,
-                    root.string(), "linux.filesystem", true, 0
-                });
-            }
-        }
-        const auto folder_match = entity_resolver_.resolve(std::move(folder_request));
-        if (folder_match.status == entity_resolution::ResolutionStatus::Ambiguous) {
-            return needs_choice(request.request_id, "folder");
-        }
-        if (folder_match.status != entity_resolution::ResolutionStatus::Found) {
-            return failure(request.request_id,
-                lower(intent.name) == "browser"
-                    ? "No default browser is configured on this system."
-                    : "No installed application or matching folder was found.");
-        }
-
-        operation = "open_path";
-        operation_data["path"] = folder_match.selected.id;
-        capability_id = "filesystem.open_path";
-        entity_type = "folder";
-        resolved_name = folder_match.selected.name;
+        return failure(request.request_id,
+            "No installed application or matching folder was found.");
     }
 
     planning::PlanningRequest planning_request;
