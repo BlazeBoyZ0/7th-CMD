@@ -40,6 +40,7 @@ TaskOutcome Orchestrator::execute(
 
     const auto finish = [this, &outcome]() {
         outcome.state = task_states_.state_of(outcome.task_id);
+        record_error(outcome);
         record_context(outcome);
         return outcome;
     };
@@ -106,6 +107,26 @@ TaskOutcome Orchestrator::execute(
     return finish();
 }
 
+void Orchestrator::record_error(const TaskOutcome& outcome) {
+    const auto status = outcome.result.status;
+    if (status != SubsystemStatus::Failure &&
+        status != SubsystemStatus::Uncertain &&
+        status != SubsystemStatus::NewRequirements) {
+        return;
+    }
+
+    recovery::ErrorRecord error;
+    error.code = std::string(to_string(status));
+    error.message = outcome.result.error.empty()
+        ? "The subsystem returned an unsuccessful result."
+        : outcome.result.error;
+    error.subsystem = outcome.subsystem_id;
+    error.recoverable = status == SubsystemStatus::Uncertain ||
+                        status == SubsystemStatus::NewRequirements;
+    error.context["task_id"] = outcome.task_id;
+    error_manager_.record(std::move(error));
+}
+
 void Orchestrator::record_context(const TaskOutcome& outcome) {
     auto* context = contexts_.find(outcome.task_id);
     if (!context) return;
@@ -138,6 +159,11 @@ const knowledge::TaskContext* Orchestrator::context_of(
 
 bool Orchestrator::clear_context(const TaskId& task_id) {
     return contexts_.erase(task_id);
+}
+
+const std::vector<recovery::ErrorRecord>&
+Orchestrator::error_history() const noexcept {
+    return error_manager_.history();
 }
 
 TaskState Orchestrator::state_of(const TaskId& task_id) const {
@@ -211,9 +237,32 @@ TaskOutcome Orchestrator::continue_task(
         return outcome;
     }
 
+    if (current_state == TaskState::Recovery) {
+        recovery::ErrorRecord retry_error;
+        retry_error.code = "RECOVERABLE_SUBSYSTEM_RESULT";
+        retry_error.message = "The previous subsystem result requested recovery.";
+        retry_error.subsystem = std::string(pending->second.subsystem->id());
+        retry_error.recoverable = true;
+
+        const auto decision = recovery_manager_.decide(
+            retry_error, pending->second.recovery_attempts, 2);
+        if (decision.action != recovery::RecoveryAction::Retry) {
+            task_states_.transition(task_id, TaskState::Failed);
+            outcome.state = task_states_.state_of(task_id);
+            outcome.result.status = SubsystemStatus::Failure;
+            outcome.result.error = decision.explanation;
+            pending_tasks_.erase(task_id);
+            record_error(outcome);
+            record_context(outcome);
+            return outcome;
+        }
+        ++pending->second.recovery_attempts;
+    }
+
     if (!pause_resume_.resume(task_states_, task_id, permission_granted)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The task could not transition back to processing.";
+        record_error(outcome);
         return outcome;
     }
 
@@ -246,6 +295,7 @@ TaskOutcome Orchestrator::continue_task(
     }
 
     outcome.state = task_states_.state_of(task_id);
+    record_error(outcome);
     record_context(outcome);
     return outcome;
 }

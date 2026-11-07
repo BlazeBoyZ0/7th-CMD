@@ -11,6 +11,8 @@
 #include "seventh/orchestrator/workflow_controller.hpp"
 #include "seventh/systems/knowledge/context_manager.hpp"
 #include "seventh/systems/knowledge/knowledge_system.hpp"
+#include "seventh/systems/recovery/error_manager.hpp"
+#include "seventh/systems/recovery/recovery_manager.hpp"
 
 #include <map>
 #include <memory>
@@ -51,14 +53,17 @@ public:
     [[nodiscard]] const knowledge::TaskContext* context_of(
         const TaskId& task_id) const;
     bool clear_context(const TaskId& task_id);
+    [[nodiscard]] const std::vector<recovery::ErrorRecord>& error_history() const noexcept;
 
 private:
     struct PendingTask {
         SubsystemRequest request;
         std::shared_ptr<Subsystem> subsystem;
+        std::size_t recovery_attempts{0};
     };
 
     void record_context(const TaskOutcome& outcome);
+    void record_error(const TaskOutcome& outcome);
     std::vector<std::shared_ptr<Subsystem>> subsystems_;
     RequestManager request_manager_;
     SubsystemRouter router_;
@@ -72,6 +77,8 @@ private:
     knowledge::KnowledgeSystem knowledge_;
     knowledge::ContextManager contexts_;
     std::map<TaskId, PendingTask> pending_tasks_;
+    recovery::ErrorManager error_manager_;
+    recovery::RecoveryManager recovery_manager_;
 };
 
 } // namespace seventh
