@@ -963,6 +963,9 @@ SubsystemResult CommandSubsystem::count_file(
     if (text_value == executed.output_data.end()) {
         return failure(request.request_id, "The file reader returned no text content.");
     }
+    if (text_value->second.find('\\0') != std::string::npos) {
+        return failure(request.request_id, "The selected file appears to contain binary data.");
+    }
 
     information::ProviderRegistry registry;
     information::InformationProcessor processor(registry);
