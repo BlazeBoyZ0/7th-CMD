@@ -73,6 +73,11 @@ add_executable(7thcmd
     src/systems/entity_resolution/entity_classifier.cpp
     src/systems/entity_resolution/entity_matcher.cpp
     src/systems/entity_resolution/entity_resolver.cpp
+    src/systems/capabilities/capability_definition.cpp
+    src/systems/capabilities/capability_registry.cpp
+    src/systems/permissions/authorization_handler.cpp
+    src/systems/permissions/permission_checker.cpp
+    src/systems/permissions/permission_manager.cpp
     src/orchestrator/orchestrator.cpp
 )
 
