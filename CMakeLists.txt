@@ -32,6 +32,14 @@ add_executable(7thcmd
     src/engines/grammar/cir_generator.cpp
     src/engines/grammar/grammar_engine.cpp
     src/engines/grammar/grammar_subsystem.cpp
+    src/engines/reasoning/bounded_search.cpp
+    src/engines/reasoning/confidence_evaluator.cpp
+    src/engines/reasoning/contradiction_handler.cpp
+    src/engines/reasoning/fact_resolver.cpp
+    src/engines/reasoning/reasoning_engine.cpp
+    src/engines/reasoning/rule_evaluator.cpp
+    src/engines/reasoning/truth_evaluator.cpp
+    src/engines/reasoning/uncertainty_handler.cpp
     src/orchestrator/orchestrator.cpp
 )
 
