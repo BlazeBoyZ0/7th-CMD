@@ -1,11 +1,11 @@
 #include "seventh/orchestrator/command_subsystem.hpp"
 
-#include "seventh/engines/grammar/grammar_engine.hpp"
 #include "seventh/platform/linux/linux_operation_executor.hpp"
 #include "seventh/systems/entity_resolution/entity_types.hpp"
 #include "seventh/systems/permissions/permission_types.hpp"
 #include "seventh/systems/verification/verification_types.hpp"
 
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -31,8 +31,10 @@ SubsystemResult failure(const RequestId& id, std::string message) {
 
 } // namespace
 
-CommandSubsystem::CommandSubsystem(platform::PlatformInterface& platform)
-    : platform_(platform), permission_manager_(capabilities_) {
+CommandSubsystem::CommandSubsystem(
+    platform::PlatformInterface& platform, grammar::GrammarConfig grammar_config)
+    : platform_(platform), grammar_engine_(std::move(grammar_config)),
+      permission_manager_(capabilities_) {
     capabilities::CapabilityDefinition create_folder;
     create_folder.id = "filesystem.create_directory";
     create_folder.description = "Create a directory within the user's home directory.";
@@ -105,6 +107,13 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         return result;
     }
 
+    const std::filesystem::path folder_name(intent.name);
+    if (folder_name.empty() || folder_name.is_absolute() ||
+        folder_name.has_parent_path() || intent.name == "." || intent.name == "..") {
+        return failure(request.request_id,
+            "A folder name must be a single name, not a path.");
+    }
+
     const auto destination_path = resolve_destination(intent.destination);
     if (destination_path.empty()) {
         return failure(request.request_id, "The user's home directory is unavailable.");
@@ -135,7 +144,7 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     }
 
     const auto target_path =
-        (std::filesystem::path(resolved.selected.id) / intent.name).lexically_normal().string();
+        (std::filesystem::path(resolved.selected.id) / folder_name).lexically_normal().string();
 
     reasoning::Fact existence_fact;
     existence_fact.subject = target_path;

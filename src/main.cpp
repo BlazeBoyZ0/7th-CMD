@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
     orchestrator.register_subsystem(
         std::make_shared<seventh::grammar::GrammarSubsystem>(grammar_config));
     orchestrator.register_subsystem(
-        std::make_shared<seventh::CommandSubsystem>(platform));
+        std::make_shared<seventh::CommandSubsystem>(platform, grammar_config));
     seventh::response::ResponseGenerator response_generator;
     seventh::cli::InputHandler input_handler;
 
