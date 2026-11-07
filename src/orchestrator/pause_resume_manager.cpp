@@ -13,8 +13,10 @@ bool PauseResumeManager::pause_for_permission(TaskStateManager& states,
 }
 
 bool PauseResumeManager::resume(TaskStateManager& states,
-                                const TaskId& task_id) const {
+                                const TaskId& task_id,
+                                bool permission_granted) const {
     const auto state = states.state_of(task_id);
+    if (state == TaskState::WaitingForPermission && !permission_granted) return false;
     if (state != TaskState::WaitingForUser &&
         state != TaskState::WaitingForPermission &&
         state != TaskState::Recovery) return false;
