@@ -1,8 +1,10 @@
 #include "seventh/engines/planning/planning_engine.hpp"
 #include "seventh/engines/reasoning/rule_evaluator.hpp"
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
+#include "seventh/systems/permissions/permission_manager.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -92,7 +94,6 @@ void test_planning_dependencies() {
     parent.id = "parent";
     parent.operation = "create_directory";
 
-    // Deliberately provide the dependent task first. The planner must order it.
     request.tasks = {child, parent};
     const auto plan = PlanningEngine{}.create_plan(request);
 
@@ -113,18 +114,79 @@ void test_planning_dependencies() {
     expect(!cyclic.valid, "a cyclic dependency graph is rejected");
 }
 
+void test_permission_boundaries() {
+    using namespace seventh::capabilities;
+    using namespace seventh::permissions;
+
+    CapabilityRegistry registry;
+    const auto root = std::filesystem::current_path().lexically_normal().string();
+
+    CapabilityDefinition read;
+    read.id = "test.read";
+    read.operations = {"read_text"};
+    read.allowed_roots = {root};
+    read.enabled = true;
+    read.read_only = true;
+    expect(registry.register_capability(read),
+           "a valid read-only capability can be registered");
+
+    CapabilityDefinition write;
+    write.id = "test.delete";
+    write.operations = {"delete_path"};
+    write.allowed_roots = {root};
+    write.enabled = true;
+    write.read_only = false;
+    expect(registry.register_capability(write),
+           "a valid modifying capability can be registered");
+
+    PermissionManager permissions(registry);
+
+    PermissionRequest read_request;
+    read_request.capability_id = "test.read";
+    read_request.operation = "read_text";
+    read_request.resource_path = root;
+    expect(permissions.authorize(read_request).decision == PermissionDecision::Allowed,
+           "an enabled read-only operation is allowed inside its root");
+
+    read_request.modifies_state = true;
+    expect(permissions.authorize(read_request).decision == PermissionDecision::Denied,
+           "a read-only capability cannot authorize state changes");
+
+    PermissionRequest delete_request;
+    delete_request.capability_id = "test.delete";
+    delete_request.operation = "delete_path";
+    delete_request.resource_path = root;
+    delete_request.destructive = true;
+    expect(permissions.authorize(delete_request).decision ==
+               PermissionDecision::RequiresConfirmation,
+           "destructive operations require explicit confirmation");
+    delete_request.user_confirmed = true;
+    expect(permissions.authorize(delete_request).decision == PermissionDecision::Allowed,
+           "a confirmed destructive operation can proceed");
+
+    delete_request.resource_path = (std::filesystem::path(root) / "..").string();
+    expect(permissions.authorize(delete_request).decision == PermissionDecision::Denied,
+           "a target outside the configured root is denied");
+
+    registry.set_enabled("test.delete", false);
+    delete_request.resource_path = root;
+    expect(permissions.authorize(delete_request).decision == PermissionDecision::Denied,
+           "disabled capabilities cannot authorize operations");
+}
+
 } // namespace
 
 int main() {
     test_three_valued_logic();
     test_rule_inference();
     test_planning_dependencies();
+    test_permission_boundaries();
 
     if (failures != 0) {
         std::cerr << failures << " test(s) failed.\n";
         return EXIT_FAILURE;
     }
 
-    std::cout << "All core engine tests passed.\n";
+    std::cout << "All core engine and permission tests passed.\n";
     return EXIT_SUCCESS;
 }
