@@ -424,7 +424,8 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         return result;
     }
 
-    if (intent.operation == "open" && intent.entity_type == "application") {
+    if (intent.operation == "open" &&
+        (intent.entity_type == "application" || intent.entity_type == "folder")) {
         return open_target(request, intent);
     }
     if (intent.operation == "create" && intent.entity_type == "folder") {
