@@ -1241,6 +1241,12 @@ SubsystemResult CommandSubsystem::delete_target(
     result.result_data["name"] = std::filesystem::path(path).filename().string();
     result.result_data["path"] = path;
     result.result_data["verified"] = "true";
+    std::string record_ids;
+    for (const auto& id : execution_record_ids) {
+        if (!record_ids.empty()) record_ids += '\\n';
+        record_ids += id;
+    }
+    result.result_data["execution_record_ids"] = std::move(record_ids);
     return result;
 }
 
@@ -1587,6 +1593,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     }
 
     std::size_t completed = 0;
+    std::vector<std::string> execution_record_ids;
     for (std::size_t index = 0; index < plan.tasks.size(); ++index) {
         auto& task = plan.tasks[index];
         if (!plan_state_manager_.start(plan, task.id)) {
@@ -1595,6 +1602,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
 
         execution::ExecutionRequest execution_request;
         execution_request.task_id = request.task_id + "-chain-" + std::to_string(index + 1);
+        execution_request.plan_id = plan.id;
+        execution_request.plan_step_id = task.id;
         execution_request.operation = task.operation;
         execution_request.input_data = task.input_data;
         execution_request.requires_authorization = true;
@@ -1602,12 +1611,15 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         execution_request.authorized_root = authorized_roots[index];
         execution_request.authorized_destination_root = destination_roots[index];
         const auto executed = execution_engine_.execute(execution_request);
+        execution_record_ids.push_back(execution_request.task_id);
         if (executed.status != execution::ExecutionStatus::Success) {
             const bool marked_failed = plan_state_manager_.fail(plan, task.id);
             auto result = failure(request.request_id, executed.error);
             if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["execution_record_ids"] = execution_record_ids.empty()
+                ? std::string{} : execution_record_ids.front();
             return result;
         }
 
