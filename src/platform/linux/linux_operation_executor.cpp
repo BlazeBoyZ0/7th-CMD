@@ -1,5 +1,6 @@
 #include "seventh/platform/linux/linux_operation_executor.hpp"
 #include "seventh/systems/permissions/permission_types.hpp"
+#include "seventh/systems/permissions/permission_types.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -50,7 +51,13 @@ execution::ExecutionResult LinuxOperationExecutor::execute(
             return result;
         }
         std::string read_error;
-        const auto text = platform_.filesystem().read_text(path->second, read_error);
+        if (!request.authorized_root) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "read_text requires an authorized directory handle.";
+            return result;
+        }
+        const auto text = platform_.filesystem().read_text_authorized(
+            path->second, *request.authorized_root, read_error);
         if (!text) {
             result.status = execution::ExecutionStatus::Failure;
             result.error = read_error;
@@ -70,7 +77,13 @@ execution::ExecutionResult LinuxOperationExecutor::execute(
             result.error = "delete_path requires a target path.";
             return result;
         }
-        const auto removed = platform_.filesystem().remove(path->second);
+        if (!request.authorized_root) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "delete_path requires an authorized directory handle.";
+            return result;
+        }
+        const auto removed = platform_.filesystem().remove_authorized(
+            path->second, *request.authorized_root);
         if (!removed.success) {
             result.status = execution::ExecutionStatus::Failure;
             result.error = removed.error;
@@ -91,9 +104,18 @@ execution::ExecutionResult LinuxOperationExecutor::execute(
             result.error = "A source and destination path are required.";
             return result;
         }
+        if (!request.authorized_root || !request.authorized_destination_root) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "Filesystem moves and copies require authorized source and destination handles.";
+            return result;
+        }
         const auto operation = request.operation == "rename_path"
-            ? platform_.filesystem().rename(source->second, destination->second)
-            : platform_.filesystem().copy(source->second, destination->second);
+            ? platform_.filesystem().rename_authorized(
+                  source->second, destination->second,
+                  *request.authorized_root, *request.authorized_destination_root)
+            : platform_.filesystem().copy_authorized(
+                  source->second, destination->second,
+                  *request.authorized_root, *request.authorized_destination_root);
         if (!operation.success) {
             result.status = execution::ExecutionStatus::Failure;
             result.error = operation.error;
@@ -112,7 +134,13 @@ execution::ExecutionResult LinuxOperationExecutor::execute(
             result.error = "create_directory requires an absolute path.";
             return result;
         }
-        const auto operation = platform_.filesystem().create_directory(path->second);
+        if (!request.authorized_root) {
+            result.status = execution::ExecutionStatus::Failure;
+            result.error = "create_directory requires an authorized directory handle.";
+            return result;
+        }
+        const auto operation = platform_.filesystem().create_directory_authorized(
+            path->second, *request.authorized_root);
         if (!operation.success) {
             result.status = execution::ExecutionStatus::Failure;
             result.error = operation.error;

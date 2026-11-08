@@ -57,7 +57,6 @@ bool relative_components(
         return false;
     }
 
-    std::error_code ec;
     const auto target = fs::path(path).lexically_normal();
     const auto root_path = fs::path(root.canonical_path);
     const auto relative = target.lexically_relative(root_path);
