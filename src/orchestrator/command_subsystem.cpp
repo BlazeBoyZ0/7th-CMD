@@ -1241,10 +1241,12 @@ SubsystemResult CommandSubsystem::delete_target(
     result.result_data["name"] = std::filesystem::path(path).filename().string();
     result.result_data["path"] = path;
     result.result_data["verified"] = "true";
-    result.result_data["completed_steps"] = std::to_string(completed);
-    result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
-    result.result_data["total_steps"] = std::to_string(clauses.size());
-    result.result_data["execution_record_ids"] = joined_execution_record_ids();
+    result.result_data["completed_steps"] = "1";
+    result.result_data["attempted_steps"] = "1";
+    result.result_data["total_steps"] = "1";
+    if (const auto record = execution_engine_.record_of(request.task_id)) {
+        result.result_data["execution_record_ids"] = record->record_id;
+    }
     return result;
 }
 
