@@ -190,9 +190,12 @@ void test_grammar_interpretation() {
 
     expect(create.schema_version == 1 && !create.id.empty() &&
                create.slots.contains("name") && create.slots.contains("destination"),
-           "CIR carries a schema version, stable identifier, and structured slots");
+           "CIR carries a schema version, unique identifier, and structured slots");
     expect(create.pattern_id == "create_named_entity",
            "the declarative create pattern is selected and recorded");
+    const auto repeated_create = grammar.interpret("Create a folder named Projects on Desktop");
+    expect(!repeated_create.id.empty() && repeated_create.id != create.id,
+           "separate interpretations receive distinct CIR identifiers");
 
     seventh::grammar::GrammarConfig loaded_config;
     std::string grammar_error;
