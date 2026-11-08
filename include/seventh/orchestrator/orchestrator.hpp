@@ -14,6 +14,7 @@
 #include "seventh/systems/recovery/error_manager.hpp"
 #include "seventh/systems/recovery/recovery_manager.hpp"
 
+#include <atomic>
 #include <map>
 #include <mutex>
 #include <memory>
