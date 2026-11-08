@@ -61,6 +61,22 @@ void test_grammar_interpretation() {
                scoped_search.destination == "Desktop",
            "the grammar extracts an on-Desktop search scope");
 
+    const auto count_command = grammar.interpret("count lnes in test.kek");
+    expect(count_command.valid && count_command.operation == "count" &&
+               count_command.query == "lines" && count_command.name == "test.kek",
+           "count commands normalize metric typos without changing file names");
+
+    const auto count_question = grammar.interpret("how muxh words are in test.kek");
+    expect(count_question.valid && count_question.operation == "count" &&
+               count_question.query == "words" && count_question.name == "test.kek",
+           "natural count questions normalize into a file-count instruction");
+
+    const auto typo_command = grammar.interpret("creat a foler named Scratch on Desktop");
+    expect(typo_command.valid && typo_command.operation == "create" &&
+               typo_command.entity_type == "folder" &&
+               typo_command.name == "Scratch" && typo_command.destination == "Desktop",
+           "known command and entity typos are corrected while names and paths are preserved");
+
     const auto incomplete = grammar.interpret("create a folder");
     expect(!incomplete.valid && !incomplete.missing_information.empty(),
            "incomplete instructions request missing information");
@@ -96,6 +112,18 @@ void test_entity_resolution_relevance() {
     expect(ambiguous.status == ResolutionStatus::Ambiguous &&
                ambiguous.candidates.size() == 2,
            "genuine duplicate exact matches remain available for clarification");
+
+    ResolutionRequest weak_match;
+    weak_match.query = "testfolder";
+    weak_match.expected_type = EntityType::Folder;
+    weak_match.candidates.push_back({
+        "/home/test/test", "test", EntityType::Folder,
+        "/home/test", "test", true, 0
+    });
+    const auto low_confidence = EntityResolver{}.resolve(weak_match);
+    expect(low_confidence.status == ResolutionStatus::Ambiguous &&
+               low_confidence.candidates.size() == 1,
+           "a weak unique partial match requires user confirmation");
 }
 
 void test_three_valued_logic() {
