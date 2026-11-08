@@ -194,6 +194,22 @@ void test_grammar_interpretation() {
     expect(create.pattern_id == "create_named_entity",
            "the declarative create pattern is selected and recorded");
 
+    seventh::grammar::GrammarConfig loaded_config;
+    std::string grammar_error;
+    const bool config_loaded = seventh::grammar::GrammarConfigLoader{}.load_directory(
+        SEVENTH_CMD_TEST_GRAMMAR_DIR, loaded_config, grammar_error);
+    expect(config_loaded && !loaded_config.patterns.empty(),
+           "the versioned JSON grammar patterns load into executable definitions");
+    if (config_loaded) {
+        loaded_config.patterns.front().target_markers = {"called"};
+        loaded_config.patterns.front().location_markers = {"at"};
+        const auto configurable = GrammarEngine(loaded_config).interpret(
+            "create a folder called DynamicPatternTest at Desktop");
+        expect(configurable.valid && configurable.name == "DynamicPatternTest" &&
+                   configurable.destination == "Desktop",
+               "changing JSON-backed pattern markers changes actual parsing behavior");
+    }
+
     const auto partial = grammar.interpret("rename file main.cpp");
     expect(!partial.valid && partial.missing_information.size() == 1 &&
                partial.missing_information.front() == "destination",

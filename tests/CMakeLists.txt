@@ -60,3 +60,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(7thcmd_execution_record_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 add_test(NAME 7thcmd_execution_records COMMAND 7thcmd_execution_record_tests)
+
+target_compile_definitions(7thcmd_tests PRIVATE
+    SEVENTH_CMD_TEST_GRAMMAR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../config/grammar"
+)

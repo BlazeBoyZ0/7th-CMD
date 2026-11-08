@@ -1,5 +1,6 @@
 #include "seventh/engines/grammar/cir_generator.hpp"
-#include <functional>
+#include <atomic>
+#include <cstdint>
 
 #include <algorithm>
 #include <cctype>
