@@ -128,6 +128,12 @@ TaskOutcome Orchestrator::execute(
 
     const auto next = workflow_.next_state(outcome.result);
     if (!task_states_.transition(request.task_id, next)) {
+        if (task_states_.state_of(request.task_id) == TaskState::Cancelled) {
+            if (outcome.result.error.empty()) {
+                outcome.result.error = "The task was cancelled before workflow completion.";
+            }
+            return finish();
+        }
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The workflow requested an invalid task-state transition.";
         if (!task_states_.transition(request.task_id, TaskState::Failed)) {
@@ -358,6 +364,16 @@ TaskOutcome Orchestrator::continue_task(
 
     const auto next = workflow_.next_state(outcome.result);
     if (!task_states_.transition(task_id, next)) {
+        if (task_states_.state_of(task_id) == TaskState::Cancelled) {
+            pending_tasks_.erase(task_id);
+            outcome.state = TaskState::Cancelled;
+            if (outcome.result.error.empty()) {
+                outcome.result.error = "The resumed task was cancelled before workflow completion.";
+            }
+            record_error(outcome);
+            record_context(outcome);
+            return outcome;
+        }
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The resumed workflow requested an invalid state transition.";
         if (!task_states_.transition(task_id, TaskState::Failed)) {
