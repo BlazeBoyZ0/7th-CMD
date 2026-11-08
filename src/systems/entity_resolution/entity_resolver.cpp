@@ -20,6 +20,10 @@ ResolutionResult EntityResolver::resolve(ResolutionRequest request) const {
         candidate.score = matcher_.score(request.query, candidate);
     }
     context_resolver_.apply(request, result.candidates);
+    result.candidates.erase(
+        std::remove_if(result.candidates.begin(), result.candidates.end(),
+            [](const EntityCandidate& candidate) { return candidate.score <= 0; }),
+        result.candidates.end());
 
     std::stable_sort(result.candidates.begin(), result.candidates.end(),
         [](const EntityCandidate& left, const EntityCandidate& right) {
