@@ -22,6 +22,12 @@ add_executable(7thcmd_tests
     ../src/systems/permissions/permission_manager.cpp
     ../src/systems/permissions/permission_checker.cpp
     ../src/systems/permissions/authorization_handler.cpp
+    ../src/systems/entity_resolution/ambiguity_detector.cpp
+    ../src/systems/entity_resolution/candidate_discovery.cpp
+    ../src/systems/entity_resolution/context_resolver.cpp
+    ../src/systems/entity_resolution/entity_classifier.cpp
+    ../src/systems/entity_resolution/entity_matcher.cpp
+    ../src/systems/entity_resolution/entity_resolver.cpp
     ../src/systems/capabilities/capability_registry.cpp
     ../src/utilities/json_loader.cpp
     ../src/orchestrator/task_state_manager.cpp
