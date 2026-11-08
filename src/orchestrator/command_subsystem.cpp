@@ -1592,7 +1592,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     const auto joined_execution_record_ids = [&execution_record_ids]() {
         std::string joined;
         for (const auto& id : execution_record_ids) {
-            if (!joined.empty()) joined += '\\n';
+            if (!joined.empty()) joined += '\n';
             joined += id;
         }
         return joined;
