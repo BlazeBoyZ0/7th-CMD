@@ -3,6 +3,7 @@
 #include "seventh/engines/reasoning/rule_evaluator.hpp"
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
 #include "seventh/systems/permissions/permission_manager.hpp"
+#include "seventh/systems/information/platform_data_providers.hpp"
 #include "seventh/orchestrator/task_state_manager.hpp"
 #include "seventh/orchestrator/workflow_controller.hpp"
 #include "seventh/systems/entity_resolution/entity_resolver.hpp"
@@ -12,8 +13,75 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace {
+
+class TestFilesystem final : public seventh::platform::FilesystemInterface {
+public:
+    std::string content;
+
+    bool exists(const std::string&) const override { return false; }
+    std::vector<seventh::platform::FileEntry> list(
+        const std::string&, std::string&) const override { return {}; }
+    std::optional<std::string> read_text(
+        const std::string&, std::string&) const override { return content; }
+    seventh::platform::PlatformResult create_directory(
+        const std::string&) override { return {}; }
+    seventh::platform::PlatformResult rename(
+        const std::string&, const std::string&) override { return {}; }
+    seventh::platform::PlatformResult copy(
+        const std::string&, const std::string&) override { return {}; }
+    seventh::platform::PlatformResult remove(
+        const std::string&) override { return {}; }
+};
+
+class TestApplications final : public seventh::platform::ApplicationInterface {
+public:
+    std::vector<seventh::platform::ApplicationEntry> list(
+        std::string&) const override { return {}; }
+    std::optional<seventh::platform::ApplicationEntry> find(
+        const std::string&) const override { return std::nullopt; }
+    std::optional<seventh::platform::ApplicationEntry> find_default(
+        const std::string&) const override { return std::nullopt; }
+    seventh::platform::PlatformResult launch(
+        const seventh::platform::ApplicationEntry&) override { return {}; }
+};
+
+class TestProcesses final : public seventh::platform::ProcessInterface {
+public:
+    std::vector<seventh::platform::ProcessEntry> list(
+        std::string&) const override { return {}; }
+    seventh::platform::PlatformResult terminate(std::uint64_t) override { return {}; }
+};
+
+class TestSystem final : public seventh::platform::SystemInterface {
+public:
+    seventh::platform::SystemInformation information(
+        std::string&) const override { return {}; }
+};
+
+class TestPlatform final : public seventh::platform::PlatformInterface {
+public:
+    const char* id() const noexcept override { return "test"; }
+    seventh::platform::FilesystemInterface& filesystem() noexcept override {
+        return filesystem_;
+    }
+    seventh::platform::ApplicationInterface& applications() noexcept override {
+        return applications_;
+    }
+    seventh::platform::ProcessInterface& processes() noexcept override {
+        return processes_;
+    }
+    seventh::platform::SystemInterface& system() noexcept override {
+        return system_;
+    }
+
+    TestFilesystem filesystem_;
+    TestApplications applications_;
+    TestProcesses processes_;
+    TestSystem system_;
+};
 
 int failures = 0;
 
@@ -24,6 +92,38 @@ void expect(bool condition, const std::string& description) {
         std::cerr << "[FAIL] " << description << '\n';
         ++failures;
     }
+}
+
+
+void test_document_provider_rejects_binary_content() {
+    using namespace seventh::information;
+
+    TestPlatform platform;
+    ProviderRegistry registry;
+    register_platform_data_providers(registry, platform);
+
+    DataRequest request;
+    request.provider_id = "document";
+    request.source_path = "sample.txt";
+    const auto provider = registry.find(request);
+    expect(static_cast<bool>(provider),
+           "the document data provider is registered");
+
+    if (!provider) return;
+
+    std::vector<DataRecord> records;
+    std::string error;
+    platform.filesystem_.content = "ordinary text";
+    expect(provider->acquire(request, records, error),
+           "the document provider accepts ordinary text content");
+    expect(!records.empty() && records.front().at("text") == "ordinary text",
+           "the document provider returns the accepted text");
+
+    platform.filesystem_.content = std::string("before\\0after", 12);
+    error.clear();
+    expect(!provider->acquire(request, records, error) &&
+               error.find("binary") != std::string::npos,
+           "the document provider rejects embedded null bytes as binary content");
 }
 
 void test_grammar_interpretation() {
@@ -322,6 +422,7 @@ void test_permission_boundaries() {
 } // namespace
 
 int main() {
+    test_document_provider_rejects_binary_content();
     test_grammar_interpretation();
     test_entity_resolution_relevance();
     test_three_valued_logic();
