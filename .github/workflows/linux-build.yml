@@ -25,6 +25,17 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
+      - name: Test interactive clarification flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          temporary_home="$(mktemp -d)"
+          trap 'rm -rf "$temporary_home"' EXIT
+          mkdir "$temporary_home/Desktop"
+          printf 'create a folder named ClarificationLoopTest\nDesktop\nexit\n' |
+            timeout 10s env HOME="$temporary_home" ./build/7thcmd
+          test -d "$temporary_home/Desktop/ClarificationLoopTest"
+
       - name: Measure executable and installed size
         shell: bash
         run: |
