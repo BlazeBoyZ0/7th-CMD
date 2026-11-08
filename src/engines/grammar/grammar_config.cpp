@@ -2,6 +2,8 @@
 
 #include "seventh/utilities/json_loader.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <utility>
 
@@ -16,6 +18,14 @@ bool read_string(const utilities::JsonValue::Object& object,
     return true;
 }
 
+std::string lower(std::string value) {
+    for (char& character : value) {
+        character = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(character)));
+    }
+    return value;
+}
+
 } // namespace
 
 GrammarConfig GrammarConfig::defaults() {
@@ -27,14 +37,19 @@ GrammarConfig GrammarConfig::defaults() {
         {"find", "search"}, {"launch", "open"}, {"start", "open"},
         {"directory", "folder"}, {"app", "application"}
     };
+    config.spelling_corrections = {
+        {"creat", "create"}, {"foler", "folder"},
+        {"lnes", "lines"}, {"muxh", "much"}
+    };
     return config;
 }
 
 std::string GrammarConfig::canonical_term(const std::string& term) const {
-    const auto synonym = synonyms.find(term);
+    const auto normalized = lower(term);
+    const auto synonym = synonyms.find(normalized);
     if (synonym != synonyms.end()) return synonym->second;
-    const auto correction = spelling_corrections.find(term);
-    return correction == spelling_corrections.end() ? term : correction->second;
+    const auto correction = spelling_corrections.find(normalized);
+    return correction == spelling_corrections.end() ? normalized : correction->second;
 }
 
 bool GrammarConfigLoader::load_directory(
@@ -50,7 +65,12 @@ bool GrammarConfigLoader::load_directory(
         return false;
     }
 
-    GrammarConfig loaded;
+    GrammarConfig loaded = GrammarConfig::defaults();
+    loaded.actions.clear();
+    loaded.entities.clear();
+    loaded.synonyms.clear();
+    loaded.spelling_corrections.clear();
+    loaded.pattern_ids.clear();
     for (const auto& entry : *entries->second.as_array()) {
         const auto* object = entry.as_object();
         if (!object) continue;
@@ -58,8 +78,8 @@ bool GrammarConfigLoader::load_directory(
         std::string category;
         if (!read_string(*object, "term", term) ||
             !read_string(*object, "category", category)) continue;
-        if (category == "action") loaded.actions.insert(term);
-        else if (category == "entity") loaded.entities.insert(term);
+        if (category == "action") loaded.actions.insert(lower(term));
+        else if (category == "entity") loaded.entities.insert(lower(term));
     }
 
     const auto synonyms = loader.load_file((root / "synonyms.json").string(), error);
@@ -78,7 +98,9 @@ bool GrammarConfigLoader::load_directory(
         const auto terms = object->find("terms");
         if (terms == object->end() || !terms->second.as_array()) continue;
         for (const auto& term : *terms->second.as_array()) {
-            if (term.as_string()) loaded.synonyms[*term.as_string()] = canonical;
+            if (term.as_string()) {
+                loaded.synonyms[lower(*term.as_string())] = lower(canonical);
+            }
         }
     }
 
@@ -112,7 +134,7 @@ bool GrammarConfigLoader::load_directory(
         std::string to;
         if (read_string(*correction.as_object(), "from", from) &&
             read_string(*correction.as_object(), "to", to)) {
-            loaded.spelling_corrections[std::move(from)] = std::move(to);
+            loaded.spelling_corrections[lower(from)] = lower(to);
         }
     }
 
