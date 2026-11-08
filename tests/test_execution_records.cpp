@@ -1,0 +1,11 @@
+#include "seventh/engines/execution/execution_engine.hpp"
+#include <cstdlib>
+#include <iostream>
+#include <memory>
+class SuccessfulExecutor final:public seventh::execution::OperationExecutor{
+public:
+ std::string_view id()const noexcept override{return "test";}
+ bool supports(const seventh::execution::ExecutionRequest&)const override{return true;}
+ seventh::execution::ExecutionResult execute(const seventh::execution::ExecutionRequest&r)override{seventh::execution::ExecutionResult x;x.status=seventh::execution::ExecutionStatus::Success;x.output_data["path"]=r.input_data.at("path");return x;}
+};
+int main(){using namespace seventh::execution;int failures=0;auto check=[&](bool ok,const char*m){std::cout<<(ok?"[PASS] ":"[FAIL] ")<<m<<'\n';if(!ok)++failures;};ExecutionEngine e;e.register_executor(std::make_shared<SuccessfulExecutor>());ExecutionRequest r;r.task_id="record-task-1";r.operation="create_directory";r.input_data["path"]="/tmp/example";r.cir_id="cir-1";r.plan_id="plan-1";r.plan_step_id="step-1";auto result=e.execute(r);auto record=e.record_of(r.task_id);check(result.status==ExecutionStatus::Success,"supported operation succeeds");check(record.has_value(),"execution record is retained in memory");if(record){check(record->cir_id=="cir-1"&&record->plan_id=="plan-1","record references CIR and plan");check(record->steps.size()==1&&record->steps[0].step_id=="step-1","record identifies attempted plan step");check(record->steps[0].outcome==StepOutcome::Succeeded&&record->steps[0].output_data.at("path")=="/tmp/example","record stores actual outcome and executor output");check(record->steps[0].verification==VerificationOutcome::NotRun,"execution does not falsely claim orchestration verification");}ExecutionRequest b;b.task_id="record-task-2";b.operation="delete_path";b.requires_authorization=true;auto denied=e.execute(b);auto blocked=e.record_of(b.task_id);check(denied.status==ExecutionStatus::NeedsPermission&&blocked&&blocked->steps[0].outcome==StepOutcome::Blocked,"authorization blocks are recorded");if(failures)return EXIT_FAILURE;std::cout<<"All execution-record tests passed.\n";return EXIT_SUCCESS;}
