@@ -31,7 +31,29 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const { 
 ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const GrammarConfig& config) const {
     ParseMatch m; m.tokens=input;
     if(input.empty()){m.error="The instruction is empty.";return m;}
-    for(auto& t:m.tokens)t=config.canonical_term(t);
+    // Normalize natural count questions into the same canonical command shape.
+    if(m.tokens.size() >= 4) {
+        const auto first=lower(m.tokens[0]);
+        const bool how=first=="how" && (config.canonical_term(m.tokens[1])=="many" || config.canonical_term(m.tokens[1])=="much");
+        const bool what=first=="what" && lower(m.tokens[1])=="is";
+        if(how||what) {
+            std::size_t metric=m.tokens.size();
+            for(std::size_t i=2;i<m.tokens.size()&&i<8;++i) {
+                const auto candidate=config.canonical_term(m.tokens[i]);
+                if(candidate=="word"||candidate=="words"||candidate=="line"||candidate=="lines"||
+                   candidate=="character"||candidate=="characters"||candidate=="byte"||candidate=="bytes") { metric=i; break; }
+            }
+            if(metric<m.tokens.size()) {
+                const auto separator=find_any(m.tokens,{"in","of","from"},metric+1);
+                if(separator<m.tokens.size()&&separator+1<m.tokens.size()) {
+                    const auto target=skip_articles(m.tokens,separator+1);
+                    std::vector<std::string> normalized{"count",config.canonical_term(m.tokens[metric]),"file"};
+                    normalized.insert(normalized.end(),m.tokens.begin()+static_cast<std::ptrdiff_t>(target),m.tokens.end());
+                    m.tokens=std::move(normalized);
+                }
+            }
+        }
+    }
     m.operation=config.canonical_term(m.tokens.front());
     if(!config.actions.contains(m.operation)){m.error="I do not recognize that command yet.";return m;}
     m.tokens.front()=m.operation; m.recognized=true;
@@ -65,7 +87,8 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const Gram
         put(m,"target",m.tokens,skip_articles(m.tokens,after_entity),m.tokens.size());
         if(!m.slots.contains("target"))m.missing_slots.push_back("target");
     } else if(m.operation=="search") {
-        const auto qmark=find_any(m.tokens,p?p->query_markers:std::vector<std::string>{"named","for"},after_entity);
+        auto qmark=find_any(m.tokens,{"named"},after_entity);
+        if(qmark==m.tokens.size())qmark=find_any(m.tokens,{"for"},after_entity);
         const auto qstart=qmark<m.tokens.size()?qmark+1:skip_articles(m.tokens,after_entity);
         const auto loc=find_any(m.tokens,locations,qstart);
         put(m,"query",m.tokens,qstart,loc);
@@ -74,9 +97,9 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const Gram
     } else if(m.operation=="count") {
         static const std::set<std::string> metrics{"word","words","line","lines","character","characters","byte","bytes"};
         std::size_t metric=m.tokens.size();
-        for(std::size_t i=1;i<m.tokens.size()&&i<8;++i)if(metrics.contains(lower(m.tokens[i]))){metric=i;break;}
+        for(std::size_t i=1;i<m.tokens.size()&&i<8;++i)if(metrics.contains(config.canonical_term(m.tokens[i]))){metric=i;break;}
         if(metric<m.tokens.size()) {
-            std::string v=lower(m.tokens[metric]); if(v=="word")v="words";if(v=="line")v="lines";if(v=="character")v="characters";if(v=="byte")v="bytes";
+            std::string v=config.canonical_term(m.tokens[metric]); if(v=="word")v="words";if(v=="line")v="lines";if(v=="character")v="characters";if(v=="byte")v="bytes";
             m.slots["metric"]={v,true,metric,metric+1};
             const auto file=find_any(m.tokens,{"in","of","from"},metric+1);
             put(m,"file",m.tokens,file<m.tokens.size()?file+1:metric+1,m.tokens.size());
