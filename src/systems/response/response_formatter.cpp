@@ -43,12 +43,12 @@ std::string ResponseFormatter::format(const ResponseData& data) const {
     if (!data.operation.empty()) output << " (" << cli::escape_terminal_text(data.operation) << ")";
     if (!data.error.empty()) output << ": " << cli::escape_terminal_text(data.error);
     for (const auto& missing : data.missing_information) {
-        output << "\nMissing: " << missing;
+        output << "\nMissing: " << cli::escape_terminal_text(missing);
     }
     for (const auto& [key, value] : data.details) {
-        output << "\n" << key << ": " << value;
+        output << "\n" << cli::escape_terminal_text(key) << ": " << cli::escape_terminal_text(value);
     }
-    if (!data.task_id.empty()) output << "\nTask ID: " << data.task_id;
+    if (!data.task_id.empty()) output << "\nTask ID: " << cli::escape_terminal_text(data.task_id);
     return output.str();
 }
 
