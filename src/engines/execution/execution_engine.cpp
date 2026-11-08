@@ -20,4 +20,5 @@ ExecutionResult ExecutionEngine::execute(const ExecutionRequest& request) {
 }
 ExecutionState ExecutionEngine::state_of(const std::string& task_id) const{return tracker_.state_of(task_id);}
 std::optional<ExecutionRecord> ExecutionEngine::record_of(const std::string& task_id) const{auto f=records_.find(task_id);if(f==records_.end())return std::nullopt;return f->second;}
+bool ExecutionEngine::set_verification(const std::string& task_id, VerificationOutcome outcome){auto f=records_.find(task_id);if(f==records_.end()||f->second.steps.empty())return false;f->second.steps.back().verification=outcome;return true;}
 }
