@@ -59,14 +59,18 @@ TaskOutcome Orchestrator::execute(
     if (!request.valid()) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The orchestrator received an incomplete subsystem request.";
-        task_states_.transition(request.task_id, TaskState::Failed);
+        if (!task_states_.transition(request.task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
         return finish();
     }
 
     if (!task_states_.transition(request.task_id, TaskState::Routing)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "Unable to enter the routing state.";
-        task_states_.transition(request.task_id, TaskState::Failed);
+        if (!task_states_.transition(request.task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
         return finish();
     }
 
@@ -75,7 +79,9 @@ TaskOutcome Orchestrator::execute(
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "No registered subsystem can handle operation '" +
                                operation + "'.";
-        task_states_.transition(request.task_id, TaskState::Failed);
+        if (!task_states_.transition(request.task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
         return finish();
     }
 
@@ -83,7 +89,9 @@ TaskOutcome Orchestrator::execute(
     if (!task_states_.transition(request.task_id, TaskState::Processing)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "Unable to enter the processing state.";
-        task_states_.transition(request.task_id, TaskState::Failed);
+        if (!task_states_.transition(request.task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
         return finish();
     }
 
@@ -94,7 +102,9 @@ TaskOutcome Orchestrator::execute(
     if (!task_states_.transition(request.task_id, next)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The workflow requested an invalid task-state transition.";
-        task_states_.transition(request.task_id, TaskState::Failed);
+        if (!task_states_.transition(request.task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
     } else if (next == TaskState::WaitingForUser) {
         interactions_.request_missing_information(
             request.task_id, outcome.result.missing_information);
@@ -252,7 +262,9 @@ TaskOutcome Orchestrator::continue_task(
         const auto decision = recovery_manager_.decide(
             retry_error, pending->second.recovery_attempts, 2);
         if (decision.action != recovery::RecoveryAction::Retry) {
-            task_states_.transition(task_id, TaskState::Failed);
+            if (!task_states_.transition(task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
             outcome.state = task_states_.state_of(task_id);
             outcome.result.status = SubsystemStatus::Failure;
             outcome.result.error = decision.explanation;
@@ -286,7 +298,9 @@ TaskOutcome Orchestrator::continue_task(
     if (!task_states_.transition(task_id, next)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The resumed workflow requested an invalid state transition.";
-        task_states_.transition(task_id, TaskState::Failed);
+        if (!task_states_.transition(task_id, TaskState::Failed)) {
+            outcome.result.error += " The task state could not be marked failed.";
+        }
         pending_tasks_.erase(task_id);
     } else if (next == TaskState::WaitingForUser) {
         interactions_.request_missing_information(
