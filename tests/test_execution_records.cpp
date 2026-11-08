@@ -21,7 +21,7 @@ int main() {
     using namespace seventh::execution;
     int failures = 0;
     const auto check = [&failures](bool condition, const char* message) {
-        std::cout << (condition ? "[PASS] " : "[FAIL] ") << message << '\\n';
+        std::cout << (condition ? "[PASS] " : "[FAIL] ") << message << '\n';
         if (!condition) ++failures;
     };
 
@@ -89,6 +89,6 @@ int main() {
           "failed verification is reflected in the final execution record");
 
     if (failures != 0) return EXIT_FAILURE;
-    std::cout << "All execution-record tests passed.\\n";
+    std::cout << "All execution-record tests passed.\n";
     return EXIT_SUCCESS;
 }
