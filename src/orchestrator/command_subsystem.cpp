@@ -1619,6 +1619,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
@@ -1641,6 +1642,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
@@ -1670,6 +1672,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
@@ -1678,6 +1681,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
                 "An operation was verified, but its plan state could not be completed.");
             result.result_data["completed_steps"] = std::to_string(completed + 1);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
