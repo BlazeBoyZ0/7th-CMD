@@ -217,6 +217,7 @@ int main(int argc, char* argv[]) {
                             break;
                         }
                         std::cout << outcome.result.error << '\n';
+                        continue;
                     }
                     if (!orchestrator.resolve_question(
                             outcome.task_id, question->required_field, answer)) {
