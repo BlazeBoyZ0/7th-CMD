@@ -41,6 +41,15 @@ ResolutionResult EntityResolver::resolve(ResolutionRequest request) const {
         return result;
     }
 
+    // A weak partial-name match is not sufficient authorization to act.
+    // Route it through the existing clarification path even when it is unique.
+    constexpr int minimum_action_score = 75;
+    if (result.candidates.front().score < minimum_action_score) {
+        result.status = ResolutionStatus::Ambiguous;
+        result.explanation = "The best match is weak and needs user confirmation.";
+        return result;
+    }
+
     result.status = ResolutionStatus::Found;
     result.selected = result.candidates.front();
     result.explanation = "A unique best candidate was found.";
