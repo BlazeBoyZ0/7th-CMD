@@ -862,7 +862,7 @@ SubsystemResult CommandSubsystem::modify_path(
 
     // Clarification answers are stored on the pending request. Apply the
     // supplied destination before resolving or validating the operation.
-    std::string destination_value = destination_value;
+    std::string destination_value = intent.destination;
     if (destination_value.empty()) {
         const auto answer = request.context.find("clarification.destination");
         if (answer != request.context.end()) destination_value = answer->second;
