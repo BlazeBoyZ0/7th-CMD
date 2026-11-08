@@ -71,6 +71,10 @@ void test_grammar_interpretation() {
                count_question.query == "words" && count_question.name == "test.kek",
            "natural count questions normalize into a file-count instruction");
 
+    const auto mixed_case_question = grammar.interpret("how muxh words are in Test.Kek");
+    expect(mixed_case_question.valid && mixed_case_question.name == "Test.Kek",
+           "question normalization preserves the case of file names");
+
     const auto typo_command = grammar.interpret("creat a foler named Scratch on Desktop");
     expect(typo_command.valid && typo_command.operation == "create" &&
                typo_command.entity_type == "folder" &&
