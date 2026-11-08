@@ -191,7 +191,9 @@ int main(int argc, char* argv[]) {
                     const auto options = outcome.result.result_data.find("choice_options");
                     if (options != outcome.result.result_data.end() &&
                         !options->second.empty()) {
-                        std::cout << "Candidates:\n" << options->second << '\n';
+                        std::cout << "Candidates:\n"
+                                  << seventh::cli::escape_terminal_text(options->second)
+                                  << '\n';
                     }
 
                     if (!outcome.result.error.empty()) {
