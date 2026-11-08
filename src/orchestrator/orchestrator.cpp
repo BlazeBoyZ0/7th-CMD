@@ -26,8 +26,13 @@ TaskOutcome Orchestrator::execute(
     std::map<std::string, std::string> input_data,
     std::map<std::string, std::string> context,
     StringList constraints) {
-    const auto request = request_manager_.create(
+    auto request = request_manager_.create(
         operation, std::move(input_data), std::move(context), std::move(constraints));
+    request.cancellation_requested = std::make_shared<std::atomic_bool>(false);
+    {
+        std::lock_guard lock(cancellation_mutex_);
+        cancellation_tokens_[request.task_id] = request.cancellation_requested;
+    }
 
     TaskOutcome outcome;
     outcome.task_id = request.task_id;
@@ -45,6 +50,10 @@ TaskOutcome Orchestrator::execute(
 
     const auto finish = [this, &outcome]() {
         outcome.state = task_states_.state_of(outcome.task_id);
+        {
+            std::lock_guard lock(cancellation_mutex_);
+            cancellation_tokens_.erase(outcome.task_id);
+        }
         record_error(outcome);
         record_context(outcome);
         return outcome;
@@ -97,6 +106,14 @@ TaskOutcome Orchestrator::execute(
 
     outcome.result = result_handler_.normalize(
         dispatcher_.dispatch(*subsystem, request), request.request_id);
+
+    if (request.cancellation_requested->load()) {
+        if (outcome.result.error.empty()) {
+            outcome.result.error = "Cancellation requested; the active operation was allowed to finish safely.";
+        }
+        pending_tasks_.erase(request.task_id);
+        return finish();
+    }
 
     const auto next = workflow_.next_state(outcome.result);
     if (!task_states_.transition(request.task_id, next)) {
@@ -186,17 +203,27 @@ TaskState Orchestrator::state_of(const TaskId& task_id) const {
 }
 
 bool Orchestrator::cancel(const TaskId& task_id) {
-    const bool cancelled = cancellation_.cancel(task_states_, task_id);
-    if (cancelled) {
-        interactions_.cancel(task_id);
-        pending_tasks_.erase(task_id);
-        if (auto* context = contexts_.find(task_id)) {
-            context->values["task.state"] =
-                std::to_string(static_cast<unsigned int>(TaskState::Cancelled));
-            context->unresolved_information.clear();
-        }
+    const auto previous_state = task_states_.state_of(task_id);
+    {
+        std::lock_guard lock(cancellation_mutex_);
+        const auto token = cancellation_tokens_.find(task_id);
+        if (token != cancellation_tokens_.end()) token->second->store(true);
     }
-    return cancelled;
+    const bool cancelled = cancellation_.cancel(task_states_, task_id);
+    if (!cancelled) return false;
+
+    // During active processing, leave shared context/pending-task containers to
+    // the execution thread. The atomic token is observed between plan steps.
+    if (previous_state == TaskState::Processing) return true;
+
+    interactions_.cancel(task_id);
+    pending_tasks_.erase(task_id);
+    if (auto* context = contexts_.find(task_id)) {
+        context->values["task.state"] =
+            std::to_string(static_cast<unsigned int>(TaskState::Cancelled));
+        context->unresolved_information.clear();
+    }
+    return true;
 }
 
 bool Orchestrator::resume(const TaskId& task_id, bool permission_granted) {
