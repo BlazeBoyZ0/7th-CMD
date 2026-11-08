@@ -187,6 +187,22 @@ void test_grammar_interpretation() {
     const auto incomplete = grammar.interpret("create a folder");
     expect(!incomplete.valid && !incomplete.missing_information.empty(),
            "incomplete instructions request missing information");
+
+    expect(create.schema_version == 1 && !create.id.empty() &&
+               create.slots.contains("name") && create.slots.contains("destination"),
+           "CIR carries a schema version, stable identifier, and structured slots");
+    expect(create.pattern_id == "create_named_entity",
+           "the declarative create pattern is selected and recorded");
+
+    const auto partial = grammar.interpret("rename file main.cpp");
+    expect(!partial.valid && partial.missing_information.size() == 1 &&
+               partial.missing_information.front() == "destination",
+           "partial parsing preserves the source slot and requests only the missing destination");
+
+    const auto nested_named = grammar.interpret("create a new folder inside it named Minecraft");
+    expect(nested_named.valid && nested_named.name == "Minecraft" &&
+               nested_named.destination == "it",
+           "slot extraction supports a destination before the named target");
 }
 
 void test_entity_resolution_relevance() {

@@ -41,6 +41,15 @@ GrammarConfig GrammarConfig::defaults() {
         {"creat", "create"}, {"foler", "folder"},
         {"lnes", "lines"}, {"muxh", "much"}
     };
+    config.patterns = {
+        {"create_named_entity","create","folder",{"named"},{},{},{},{"on","in","inside","within"}},
+        {"rename_entity","rename","file",{},{},{"to"},{},{}},
+        {"move_entity","move","",{},{},{"to"},{},{}},
+        {"copy_entity","copy","",{},{},{"to"},{},{}},
+        {"delete_entity","delete","",{},{},{},{},{}},
+        {"search_entity","search","",{}, {}, {}, {"named","for"},{"in","on","inside","within"}},
+        {"open_application","open","application",{},{},{},{},{}}
+    };
     return config;
 }
 
@@ -113,11 +122,26 @@ bool GrammarConfigLoader::load_directory(
         return false;
     }
     for (const auto& pattern : *pattern_list->second.as_array()) {
-        if (!pattern.as_object()) continue;
-        std::string id;
-        if (read_string(*pattern.as_object(), "id", id)) {
-            loaded.pattern_ids.push_back(std::move(id));
-        }
+        const auto* object = pattern.as_object();
+        if (!object) continue;
+        IntentPattern definition;
+        if (!read_string(*object, "id", definition.id) ||
+            !read_string(*object, "operation", definition.operation)) continue;
+        read_string(*object, "entity_type", definition.entity_type);
+        const auto read_markers = [&](const char* key, std::vector<std::string>& output) {
+            const auto found = object->find(key);
+            if (found == object->end() || !found->second.as_array()) return;
+            for (const auto& item : *found->second.as_array()) {
+                if (item.as_string()) output.push_back(lower(*item.as_string()));
+            }
+        };
+        read_markers("target_markers", definition.target_markers);
+        read_markers("source_markers", definition.source_markers);
+        read_markers("destination_markers", definition.destination_markers);
+        read_markers("query_markers", definition.query_markers);
+        read_markers("location_markers", definition.location_markers);
+        loaded.pattern_ids.push_back(definition.id);
+        loaded.patterns.push_back(std::move(definition));
     }
 
     const auto spelling = loader.load_file((root / "spelling.json").string(), error);

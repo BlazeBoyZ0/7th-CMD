@@ -1,12 +1,12 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "patterns": [
-    {"id": "create_named_entity", "operation": "create", "shape": ["create|make", "entity", "named", "name", "optional_location"]},
-    {"id": "rename_entity", "operation": "rename", "shape": ["rename", "entity", "source", "to", "destination"]},
-    {"id": "move_entity", "operation": "move", "shape": ["move", "entity", "source", "to", "destination"]},
-    {"id": "copy_entity", "operation": "copy", "shape": ["copy|duplicate", "entity", "source", "to", "destination"]},
-    {"id": "delete_entity", "operation": "delete", "shape": ["delete|remove", "entity", "target"]},
-    {"id": "search_entity", "operation": "search", "shape": ["search|find", "query"]},
-    {"id": "open_application", "operation": "open", "shape": ["open|launch|start", "application"]}
+    {"id":"create_named_entity","operation":"create","entity_type":"folder","target_markers":["named"],"location_markers":["on","in","inside","within"]},
+    {"id":"rename_entity","operation":"rename","entity_type":"file","destination_markers":["to"]},
+    {"id":"move_entity","operation":"move","destination_markers":["to"]},
+    {"id":"copy_entity","operation":"copy","destination_markers":["to"]},
+    {"id":"delete_entity","operation":"delete"},
+    {"id":"search_entity","operation":"search","query_markers":["named","for"],"location_markers":["in","on","inside","within"]},
+    {"id":"open_application","operation":"open","entity_type":"application"}
   ]
 }

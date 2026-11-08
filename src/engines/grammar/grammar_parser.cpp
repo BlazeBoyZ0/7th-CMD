@@ -1,154 +1,90 @@
 #include "seventh/engines/grammar/grammar_parser.hpp"
-
+#include "seventh/engines/grammar/entity_extractor.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
-
 namespace seventh::grammar {
 namespace {
-
-std::string lower(std::string value) {
-    for (char& character : value) {
-        character = static_cast<char>(
-            std::tolower(static_cast<unsigned char>(character)));
-    }
-    return value;
+std::string lower(std::string s) { for(char& c:s)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; }
+std::size_t find_any(const std::vector<std::string>& t,const std::vector<std::string>& markers,std::size_t from) {
+    for(std::size_t i=from;i<t.size();++i) for(const auto& m:markers) if(lower(t[i])==m)return i;
+    return t.size();
 }
-
-bool is_count_metric(const std::string& token) {
-    static const std::set<std::string> metrics{
-        "word", "words", "line", "lines", "character", "characters",
-        "byte", "bytes"
-    };
-    return metrics.contains(token);
+std::string join(const std::vector<std::string>& t,std::size_t a,std::size_t b) {
+    std::string s; for(std::size_t i=a;i<b&&i<t.size();++i){if(!s.empty())s+=' ';s+=t[i];} return s;
 }
-
-std::string plural_metric(std::string metric) {
-    if (metric == "word") return "words";
-    if (metric == "line") return "lines";
-    if (metric == "character") return "characters";
-    if (metric == "byte") return "bytes";
-    return metric;
+std::size_t skip_articles(const std::vector<std::string>& t,std::size_t i) {
+    while(i<t.size()&&(lower(t[i])=="a"||lower(t[i])=="an"||lower(t[i])=="the"||lower(t[i])=="new"))++i;
+    return i;
 }
-
-std::vector<std::string> normalize_count_instruction(
-    const std::vector<std::string>& tokens) {
-    if (tokens.size() < 4) return {};
-
-    std::vector<std::string> lowered;
-    lowered.reserve(tokens.size());
-    for (const auto& token : tokens) lowered.push_back(lower(token));
-
-    const bool how_question = lowered[0] == "how" &&
-        (lowered[1] == "many" || lowered[1] == "much");
-    const bool what_question = lowered[0] == "what" &&
-        lowered[1] == "is";
-    const bool count_command = lowered[0] == "count";
-    if (!how_question && !what_question && !count_command) return {};
-
-    std::size_t metric_index = lowered.size();
-    for (std::size_t index = count_command ? 1 : 2;
-         index < lowered.size() && index < 7; ++index) {
-        const auto metric = plural_metric(lowered[index]);
-        if (is_count_metric(metric)) {
-            metric_index = index;
-            lowered[index] = metric;
-            break;
+void put(ParseMatch& m,const std::string& key,const std::vector<std::string>& t,std::size_t a,std::size_t b) {
+    a=std::min(a,t.size()); b=std::min(b,t.size());
+    while(a<b&&(lower(t[a])=="a"||lower(t[a])=="an"||lower(t[a])=="the"))++a;
+    if(a<b)m.slots[key]={join(t,a,b),true,a,b};
+}
+const IntentPattern* pattern_for(const GrammarConfig& c,const std::string& op,const std::string& entity) {
+    for(const auto& p:c.patterns) if(p.operation==op&&(p.entity_type.empty()||p.entity_type==entity))return &p;
+    return nullptr;
+}
+}
+ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const { return parse(tokens,GrammarConfig::defaults()); }
+ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const GrammarConfig& config) const {
+    ParseMatch m; m.tokens=input;
+    if(input.empty()){m.error="The instruction is empty.";return m;}
+    for(auto& t:m.tokens)t=config.canonical_term(t);
+    m.operation=config.canonical_term(m.tokens.front());
+    if(!config.actions.contains(m.operation)){m.error="I do not recognize that command yet.";return m;}
+    m.tokens.front()=m.operation; m.recognized=true;
+    const auto entity=EntityExtractor{}.extract(m.tokens,config,1);
+    m.entity_type=entity.found?entity.type:(m.operation=="open"?"application":"item");
+    const auto* p=pattern_for(config,m.operation,m.entity_type);
+    if(p)m.pattern_id=p->id;
+    const std::size_t after_entity=entity.found?entity.token_index+1:1;
+    const std::vector<std::string> locations=p?p->location_markers:std::vector<std::string>{"on","in","inside","within"};
+    if(m.operation=="create") {
+        const auto loc=find_any(m.tokens,locations,after_entity);
+        const auto named=find_any(m.tokens,p?p->target_markers:std::vector<std::string>{"named"},after_entity);
+        if(named<m.tokens.size()&&(loc==m.tokens.size()||named<loc)) {
+            put(m,"name",m.tokens,named+1,loc);
+            if(loc<m.tokens.size())put(m,"destination",m.tokens,loc+1,m.tokens.size());
+        } else if(named<m.tokens.size()&&loc<m.tokens.size()) {
+            put(m,"destination",m.tokens,loc+1,named);
+            put(m,"name",m.tokens,named+1,m.tokens.size());
+        } else {
+            put(m,"name",m.tokens,skip_articles(m.tokens,after_entity),loc);
+            if(loc<m.tokens.size())put(m,"destination",m.tokens,loc+1,m.tokens.size());
         }
-    }
-    if (metric_index == lowered.size()) return {};
-
-    std::size_t file_index = lowered.size();
-    for (const auto* separator : {"in", "of", "from"}) {
-        const auto found = std::find(lowered.begin() +
-            static_cast<std::ptrdiff_t>(metric_index + 1),
-            lowered.end(), separator);
-        if (found != lowered.end()) {
-            file_index = std::min(file_index,
-                static_cast<std::size_t>(found - lowered.begin()));
+        if(!m.slots.contains("name"))m.missing_slots.push_back("name");
+    } else if(m.operation=="rename"||m.operation=="move"||m.operation=="copy") {
+        const auto sep=find_any(m.tokens,p?p->destination_markers:std::vector<std::string>{"to"},after_entity);
+        put(m,"source",m.tokens,skip_articles(m.tokens,after_entity),sep);
+        if(sep<m.tokens.size())put(m,"destination",m.tokens,sep+1,m.tokens.size());
+        if(!m.slots.contains("source"))m.missing_slots.push_back("source");
+        if(!m.slots.contains("destination"))m.missing_slots.push_back("destination");
+    } else if(m.operation=="delete"||m.operation=="open") {
+        put(m,"target",m.tokens,skip_articles(m.tokens,after_entity),m.tokens.size());
+        if(!m.slots.contains("target"))m.missing_slots.push_back("target");
+    } else if(m.operation=="search") {
+        const auto qmark=find_any(m.tokens,p?p->query_markers:std::vector<std::string>{"named","for"},after_entity);
+        const auto qstart=qmark<m.tokens.size()?qmark+1:skip_articles(m.tokens,after_entity);
+        const auto loc=find_any(m.tokens,locations,qstart);
+        put(m,"query",m.tokens,qstart,loc);
+        if(loc<m.tokens.size())put(m,"destination",m.tokens,loc+1,m.tokens.size());
+        if(!m.slots.contains("query"))m.missing_slots.push_back("query");
+    } else if(m.operation=="count") {
+        static const std::set<std::string> metrics{"word","words","line","lines","character","characters","byte","bytes"};
+        std::size_t metric=m.tokens.size();
+        for(std::size_t i=1;i<m.tokens.size()&&i<8;++i)if(metrics.contains(lower(m.tokens[i]))){metric=i;break;}
+        if(metric<m.tokens.size()) {
+            std::string v=lower(m.tokens[metric]); if(v=="word")v="words";if(v=="line")v="lines";if(v=="character")v="characters";if(v=="byte")v="bytes";
+            m.slots["metric"]={v,true,metric,metric+1};
+            const auto file=find_any(m.tokens,{"in","of","from"},metric+1);
+            put(m,"file",m.tokens,file<m.tokens.size()?file+1:metric+1,m.tokens.size());
         }
+        if(!m.slots.contains("metric"))m.missing_slots.push_back("metric");
+        if(!m.slots.contains("file"))m.missing_slots.push_back("file");
     }
-    if (file_index == lowered.size() || file_index + 1 >= tokens.size()) return {};
-
-    std::size_t target_index = file_index + 1;
-    if (target_index < lowered.size() && lowered[target_index] == "the") {
-        ++target_index;
-    }
-    if (target_index < lowered.size() && lowered[target_index] == "file") {
-        ++target_index;
-    }
-    if (target_index >= tokens.size()) return {};
-
-    std::vector<std::string> canonical{
-        "count", lowered[metric_index], "file"
-    };
-    canonical.insert(canonical.end(), tokens.begin() +
-        static_cast<std::ptrdiff_t>(target_index), tokens.end());
-    return canonical;
+    m.complete=m.missing_slots.empty();
+    return m;
 }
-
-} // namespace
-
-ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const {
-    return parse(tokens, GrammarConfig::defaults());
-}
-
-ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens,
-                                const GrammarConfig& config) const {
-    ParseMatch match;
-    auto prepared = tokens;
-    if (!prepared.empty()) {
-        const auto first = lower(prepared.front());
-        if (first == "how" || first == "what") {
-            for (std::size_t index = 1; index < prepared.size() && index < 4; ++index) {
-                prepared[index] = config.canonical_term(prepared[index]);
-            }
-        } else if (first == "count" && prepared.size() > 1) {
-            prepared[1] = config.canonical_term(prepared[1]);
-        }
-    }
-
-    match.tokens = normalize_count_instruction(prepared);
-    if (match.tokens.empty()) match.tokens = std::move(prepared);
-
-    if (match.tokens.empty()) {
-        match.error = "The instruction is empty.";
-        return match;
-    }
-
-    // Correct only command vocabulary, entity types, and count metrics.
-    // User-supplied names and paths remain exactly as entered.
-    for (std::size_t index = 0; index < match.tokens.size(); ++index) {
-        const auto canonical = config.canonical_term(match.tokens[index]);
-        if (index == 0 || config.entities.contains(canonical) ||
-            is_count_metric(canonical)) {
-            match.tokens[index] = canonical;
-        }
-    }
-
-    const auto action = config.canonical_term(match.tokens.front());
-    if (!config.actions.contains(action)) {
-        match.error = "I do not recognize that command yet.";
-        return match;
-    }
-    match.operation = action;
-    match.tokens.front() = action;
-
-    for (std::size_t index = 1; index < match.tokens.size(); ++index) {
-        const auto canonical = config.canonical_term(match.tokens[index]);
-        if (config.entities.contains(canonical)) {
-            match.entity_type = canonical;
-            match.tokens[index] = canonical;
-            break;
-        }
-    }
-
-    if (match.entity_type.empty()) {
-        match.entity_type = match.operation == "open" ? "application" : "item";
-    }
-
-    match.recognized = true;
-    return match;
-}
-
 } // namespace seventh::grammar
