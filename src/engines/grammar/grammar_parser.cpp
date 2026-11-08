@@ -100,7 +100,7 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens,
     if (!prepared.empty()) {
         const auto first = lower(prepared.front());
         if (first == "how" || first == "what") {
-            for (std::size_t index = 1; index < prepared.size() && index < 5; ++index) {
+            for (std::size_t index = 1; index < prepared.size() && index < 4; ++index) {
                 prepared[index] = config.canonical_term(prepared[index]);
             }
         } else if (first == "count" && prepared.size() > 1) {
