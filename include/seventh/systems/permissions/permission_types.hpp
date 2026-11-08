@@ -1,9 +1,22 @@
 #pragma once
 
+#include <memory>
 #include <string>
 #include <utility>
 
 namespace seventh::permissions {
+
+struct AuthorizedRoot {
+    std::string canonical_path;
+    int descriptor{-1};
+
+    AuthorizedRoot(std::string path, int fd)
+        : canonical_path(std::move(path)), descriptor(fd) {}
+    ~AuthorizedRoot();
+
+    AuthorizedRoot(const AuthorizedRoot&) = delete;
+    AuthorizedRoot& operator=(const AuthorizedRoot&) = delete;
+};
 
 enum class PermissionDecision {
     Allowed,
@@ -23,6 +36,7 @@ struct PermissionRequest {
 struct PermissionResult {
     PermissionDecision decision{PermissionDecision::Denied};
     std::string reason;
+    std::shared_ptr<const AuthorizedRoot> authorized_root;
 };
 
 } // namespace seventh::permissions
