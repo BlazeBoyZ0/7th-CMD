@@ -47,7 +47,7 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const Gram
                 const auto separator=find_any(m.tokens,{"in","of","from"},metric+1);
                 if(separator<m.tokens.size()&&separator+1<m.tokens.size()) {
                     const auto target=skip_articles(m.tokens,separator+1);
-                    std::vector<std::string> normalized{"count",config.canonical_term(m.tokens[metric]),"file"};
+                    std::vector<std::string> normalized{"count",config.canonical_term(m.tokens[metric])};
                     normalized.insert(normalized.end(),m.tokens.begin()+static_cast<std::ptrdiff_t>(target),m.tokens.end());
                     m.tokens=std::move(normalized);
                 }
@@ -102,7 +102,9 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const Gram
             std::string v=config.canonical_term(m.tokens[metric]); if(v=="word")v="words";if(v=="line")v="lines";if(v=="character")v="characters";if(v=="byte")v="bytes";
             m.slots["metric"]={v,true,metric,metric+1};
             const auto file=find_any(m.tokens,{"in","of","from"},metric+1);
-            put(m,"file",m.tokens,file<m.tokens.size()?file+1:metric+1,m.tokens.size());
+            auto file_start=file<m.tokens.size()?file+1:metric+1;
+            if(file_start<m.tokens.size()&&lower(m.tokens[file_start])=="file")++file_start;
+            put(m,"file",m.tokens,file_start,m.tokens.size());
         }
         if(!m.slots.contains("metric"))m.missing_slots.push_back("metric");
         if(!m.slots.contains("file"))m.missing_slots.push_back("file");

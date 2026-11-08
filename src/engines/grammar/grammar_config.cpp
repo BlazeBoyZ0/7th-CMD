@@ -80,6 +80,7 @@ bool GrammarConfigLoader::load_directory(
     loaded.synonyms.clear();
     loaded.spelling_corrections.clear();
     loaded.pattern_ids.clear();
+    loaded.patterns.clear();
     for (const auto& entry : *entries->second.as_array()) {
         const auto* object = entry.as_object();
         if (!object) continue;

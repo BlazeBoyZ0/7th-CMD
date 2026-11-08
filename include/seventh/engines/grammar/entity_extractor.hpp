@@ -1,5 +1,6 @@
 #pragma once
 #include "seventh/engines/grammar/grammar_config.hpp"
+#include <cstddef>
 #include <string>
 #include <vector>
 namespace seventh::grammar {
