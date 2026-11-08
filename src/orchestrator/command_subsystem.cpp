@@ -1241,6 +1241,9 @@ SubsystemResult CommandSubsystem::delete_target(
     result.result_data["name"] = std::filesystem::path(path).filename().string();
     result.result_data["path"] = path;
     result.result_data["verified"] = "true";
+    result.result_data["completed_steps"] = std::to_string(completed);
+    result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
+    result.result_data["total_steps"] = std::to_string(clauses.size());
     result.result_data["execution_record_ids"] = joined_execution_record_ids();
     return result;
 }
@@ -1605,12 +1608,19 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["cancelled"] = "true";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
         auto& task = plan.tasks[index];
         if (!plan_state_manager_.start(plan, task.id)) {
-            return failure(request.request_id, "A dependent filesystem task could not start.");
+            auto result = failure(request.request_id,
+                "A dependent filesystem task could not start.");
+            result.result_data["completed_steps"] = std::to_string(completed);
+            result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
+            result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            return result;
         }
 
         execution::ExecutionRequest execution_request;
