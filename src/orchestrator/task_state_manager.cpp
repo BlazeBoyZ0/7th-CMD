@@ -37,11 +37,13 @@ bool allowed_transition(TaskState from, TaskState to) {
 } // namespace
 
 bool TaskStateManager::create(const TaskId& task_id) {
+    std::lock_guard lock(mutex_);
     if (task_id.empty()) return false;
     return states_.emplace(task_id, TaskState::New).second;
 }
 
 bool TaskStateManager::transition(const TaskId& task_id, TaskState next) {
+    std::lock_guard lock(mutex_);
     const auto found = states_.find(task_id);
     if (found == states_.end() || !allowed_transition(found->second, next)) return false;
     found->second = next;
@@ -49,6 +51,7 @@ bool TaskStateManager::transition(const TaskId& task_id, TaskState next) {
 }
 
 TaskState TaskStateManager::state_of(const TaskId& task_id) const {
+    std::lock_guard lock(mutex_);
     const auto found = states_.find(task_id);
     return found == states_.end() ? TaskState::Failed : found->second;
 }
