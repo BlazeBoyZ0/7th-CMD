@@ -452,6 +452,7 @@ SubsystemResult CommandSubsystem::create_folder(
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
     execution_request.authorization_granted = true;
+    execution_request.authorized_root = permission.authorized_root;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
@@ -1024,6 +1025,8 @@ SubsystemResult CommandSubsystem::modify_path(
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
     execution_request.authorization_granted = true;
+    execution_request.authorized_root = source_allowed.authorized_root;
+    execution_request.authorized_destination_root = destination_allowed.authorized_root;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
@@ -1203,6 +1206,7 @@ SubsystemResult CommandSubsystem::delete_target(
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
     execution_request.authorization_granted = true;
+    execution_request.authorized_root = permission.authorized_root;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
@@ -1357,6 +1361,7 @@ SubsystemResult CommandSubsystem::count_file(
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
     execution_request.authorization_granted = true;
+    execution_request.authorized_root = permission.authorized_root;
     const auto executed = execution_engine_.execute(execution_request);
     if (executed.status != execution::ExecutionStatus::Success) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
@@ -1441,8 +1446,12 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     std::map<std::string, std::string> local_paths;
     std::vector<std::string> target_paths;
     std::vector<std::string> folder_names;
+    std::vector<std::shared_ptr<const permissions::AuthorizedRoot>> authorized_roots;
+    std::vector<std::shared_ptr<const permissions::AuthorizedRoot>> destination_roots;
     target_paths.reserve(clauses.size());
     folder_names.reserve(clauses.size());
+    authorized_roots.reserve(clauses.size());
+    destination_roots.reserve(clauses.size());
     std::string last_created_path;
 
     for (std::size_t index = 0; index < clauses.size(); ++index) {
@@ -1507,6 +1516,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             if (allowed.decision != permissions::PermissionDecision::Allowed) {
                 return failure(request.request_id, allowed.reason);
             }
+            authorized_roots.push_back(allowed.authorized_root);
+            destination_roots.push_back(nullptr);
 
             draft.operation = "create_directory";
             draft.input_data["path"] = target;
@@ -1551,6 +1562,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             if (destination_allowed.decision != permissions::PermissionDecision::Allowed) {
                 return failure(request.request_id, destination_allowed.reason);
             }
+            authorized_roots.push_back(source_allowed.authorized_root);
+            destination_roots.push_back(destination_allowed.authorized_root);
 
             draft.operation = "rename_path";
             draft.input_data["source"] = source;
@@ -1586,6 +1599,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         execution_request.input_data = task.input_data;
         execution_request.requires_authorization = true;
         execution_request.authorization_granted = true;
+        execution_request.authorized_root = authorized_roots[index];
+        execution_request.authorized_destination_root = destination_roots[index];
         const auto executed = execution_engine_.execute(execution_request);
         if (executed.status != execution::ExecutionStatus::Success) {
             const bool marked_failed = plan_state_manager_.fail(plan, task.id);

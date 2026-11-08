@@ -29,14 +29,20 @@ PermissionResult PermissionManager::authorize(
         return {PermissionDecision::Denied,
                 "A read-only capability cannot authorize an operation that changes system state."};
     }
-    if (!checker_.path_is_allowed(request.resource_path, *capability)) {
+
+    std::shared_ptr<const AuthorizedRoot> authorized_root;
+    if (!checker_.open_authorized_root(
+            request.resource_path, *capability, authorized_root)) {
         return {PermissionDecision::Denied,
                 "The target path is outside the capability's allowed locations."};
     }
 
     const bool confirmation_required = capability->requires_confirmation ||
         (!capability->read_only && request.destructive);
-    return authorization_.authorize_confirmation(request, confirmation_required);
+    auto confirmation = authorization_.authorize_confirmation(
+        request, confirmation_required);
+    confirmation.authorized_root = std::move(authorized_root);
+    return confirmation;
 }
 
 } // namespace seventh::permissions

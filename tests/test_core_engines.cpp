@@ -1,5 +1,6 @@
 #include "seventh/engines/grammar/grammar_engine.hpp"
 #include "seventh/cli/terminal_output.hpp"
+#include "seventh/platform/linux/linux_filesystem.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
 #include "seventh/engines/reasoning/rule_evaluator.hpp"
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
@@ -15,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <unistd.h>
 
 namespace {
 
@@ -433,6 +435,87 @@ void test_terminal_output_escaping() {
            "invalid UTF-8 bytes are escaped rather than passed to the terminal");
 }
 
+void test_descriptor_anchored_filesystem_operations() {
+    using namespace seventh::capabilities;
+    using namespace seventh::permissions;
+    using seventh::platform::linux_backend::LinuxFilesystem;
+
+    char temporary[] = "/tmp/7thcmd-secure-XXXXXX";
+    const char* created = ::mkdtemp(temporary);
+    expect(created != nullptr, "a temporary filesystem security fixture is created");
+    if (!created) return;
+
+    const std::filesystem::path base(created);
+    const auto root = base / "root";
+    const auto outside = base / "outside";
+    std::filesystem::create_directory(root);
+    std::filesystem::create_directory(outside);
+    const auto link = root / "escape";
+    const bool linked = ::symlink(outside.c_str(), link.c_str()) == 0;
+    expect(linked, "the filesystem security fixture creates an outside-pointing symlink");
+
+    CapabilityRegistry registry;
+    CapabilityDefinition capability;
+    capability.id = "test.secure-write";
+    capability.operations = {"create_directory", "rename_path", "delete_path"};
+    capability.allowed_roots = {root.string()};
+    capability.enabled = true;
+    capability.read_only = false;
+    expect(registry.register_capability(capability),
+           "a descriptor-scoped test capability is registered");
+
+    PermissionManager permissions(registry);
+    PermissionRequest request;
+    request.capability_id = capability.id;
+    request.operation = "create_directory";
+    request.resource_path = (root / "inside" / "child").string();
+    request.modifies_state = true;
+    const auto authorized = permissions.authorize(request);
+    expect(authorized.decision == PermissionDecision::Allowed &&
+               static_cast<bool>(authorized.authorized_root),
+           "authorization returns a live directory-handle capability");
+
+    LinuxFilesystem filesystem;
+    if (authorized.authorized_root) {
+        const auto created_folder = filesystem.create_directory_authorized(
+            request.resource_path, *authorized.authorized_root);
+        expect(created_folder.success,
+               "descriptor-relative creation safely creates missing parent directories");
+
+        const auto escaped_target = (link / "outside-write").string();
+        request.resource_path = escaped_target;
+        const auto symlink_authorized = permissions.authorize(request);
+        expect(symlink_authorized.decision == PermissionDecision::Allowed,
+               "lexical authorization alone does not pretend to resolve a symlink");
+        if (symlink_authorized.authorized_root) {
+            const auto blocked = filesystem.create_directory_authorized(
+                escaped_target, *symlink_authorized.authorized_root);
+            expect(!blocked.success &&
+                       !std::filesystem::exists(outside / "outside-write"),
+                   "descriptor traversal refuses a symlink escape outside the authorized root");
+        } else {
+            expect(false, "the symlink test obtains its root handle");
+        }
+
+        const auto source = (root / "inside" / "child").string();
+        const auto destination = (root / "inside" / "renamed").string();
+        const auto renamed = filesystem.rename_authorized(
+            source, destination, *authorized.authorized_root,
+            *authorized.authorized_root);
+        expect(renamed.success && std::filesystem::is_directory(destination),
+               "descriptor-relative rename moves a directory without following path links");
+
+        const auto removed = filesystem.remove_authorized(
+            destination, *authorized.authorized_root);
+        expect(removed.success && !std::filesystem::exists(destination),
+               "descriptor-relative removal deletes the authorized target");
+    }
+
+    std::error_code ignored;
+    std::filesystem::remove(link, ignored);
+    std::filesystem::remove_all(base, ignored);
+}
+
 } // namespace
 
 int main() {
@@ -445,6 +528,7 @@ int main() {
     test_permission_boundaries();
     test_task_lifecycle();
     test_terminal_output_escaping();
+    test_descriptor_anchored_filesystem_operations();
 
     if (failures != 0) {
         std::cerr << failures << " test(s) failed.\n";

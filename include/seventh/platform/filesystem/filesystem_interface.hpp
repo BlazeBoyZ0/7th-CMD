@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+namespace seventh::permissions { struct AuthorizedRoot; }
+
 namespace seventh::platform {
 
 class FilesystemInterface {
@@ -24,6 +26,32 @@ public:
         const std::string& source, const std::string& destination) = 0;
     [[nodiscard]] virtual PlatformResult remove(
         const std::string& path) = 0;
+
+    [[nodiscard]] virtual PlatformResult create_directory_authorized(
+        const std::string&, const permissions::AuthorizedRoot&) {
+        return {false, "This platform does not provide descriptor-based directory creation."};
+    }
+    [[nodiscard]] virtual PlatformResult rename_authorized(
+        const std::string&, const std::string&,
+        const permissions::AuthorizedRoot&,
+        const permissions::AuthorizedRoot&) {
+        return {false, "This platform does not provide descriptor-based rename."};
+    }
+    [[nodiscard]] virtual PlatformResult copy_authorized(
+        const std::string&, const std::string&,
+        const permissions::AuthorizedRoot&,
+        const permissions::AuthorizedRoot&) {
+        return {false, "This platform does not provide descriptor-based copy."};
+    }
+    [[nodiscard]] virtual PlatformResult remove_authorized(
+        const std::string&, const permissions::AuthorizedRoot&) {
+        return {false, "This platform does not provide descriptor-based removal."};
+    }
+    [[nodiscard]] virtual std::optional<std::string> read_text_authorized(
+        const std::string&, const permissions::AuthorizedRoot&, std::string& error) const {
+        error = "This platform does not provide descriptor-based text reading.";
+        return std::nullopt;
+    }
 };
 
 } // namespace seventh::platform

@@ -1,6 +1,9 @@
 #pragma once
 
 #include <map>
+#include <memory>
+
+namespace seventh::permissions { struct AuthorizedRoot; }
 #include <string>
 
 namespace seventh::execution {
@@ -26,6 +29,8 @@ struct ExecutionRequest {
     std::map<std::string, std::string> input_data;
     bool requires_authorization{false};
     bool authorization_granted{false};
+    std::shared_ptr<const permissions::AuthorizedRoot> authorized_root;
+    std::shared_ptr<const permissions::AuthorizedRoot> authorized_destination_root;
 };
 
 struct ExecutionResult {

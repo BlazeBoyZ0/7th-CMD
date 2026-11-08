@@ -1,6 +1,7 @@
 add_executable(7thcmd_tests
     test_core_engines.cpp
     ../src/cli/terminal_output.cpp
+    ../src/platform/linux/filesystem/linux_filesystem.cpp
     ../src/systems/information/platform_data_providers.cpp
     ../src/systems/information/provider_registry.cpp
     ../src/engines/grammar/ast_generator.cpp
