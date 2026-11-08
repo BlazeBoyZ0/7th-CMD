@@ -16,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -112,14 +113,29 @@ std::vector<std::string> split_instruction_chain(const std::string& input) {
     while (start < input.size()) {
         const auto and_then = lowered.find(" and then ", start);
         const auto then = lowered.find(" then ", start);
+        const auto than = lowered.find(" than ", start);
         std::size_t position = std::string::npos;
         std::size_t delimiter_size = 0;
         if (and_then != std::string::npos &&
-            (then == std::string::npos || and_then <= then)) {
+            (then == std::string::npos || and_then <= then) &&
+            (than == std::string::npos || and_then <= than)) {
             position = and_then;
             delimiter_size = 10;
-        } else if (then != std::string::npos) {
+        } else if (then != std::string::npos &&
+                   (than == std::string::npos || then <= than)) {
             position = then;
+            delimiter_size = 6;
+        } else if (than != std::string::npos) {
+            const auto next = than + 6;
+            const auto next_space = lowered.find(' ', next);
+            const auto action = lowered.substr(next,
+                next_space == std::string::npos ? std::string::npos : next_space - next);
+            static const std::set<std::string> actions{
+                "create", "make", "rename", "move", "copy", "delete",
+                "open", "launch", "search", "find", "count"
+            };
+            if (!actions.contains(action)) break;
+            position = than;
             delimiter_size = 6;
         }
         if (position == std::string::npos) break;
@@ -327,7 +343,12 @@ void CommandSubsystem::remember_folder(
 
 SubsystemResult CommandSubsystem::create_folder(
     const SubsystemRequest& request, const grammar::CanonicalIntent& intent) {
-    const auto destination_path = resolve_destination(intent.destination);
+    auto destination = intent.destination;
+    if (destination.empty()) {
+        const auto answer = request.context.find("clarification.destination folder");
+        if (answer != request.context.end()) destination = answer->second;
+    }
+    const auto destination_path = resolve_destination(destination);
     if (destination_path.empty()) {
         SubsystemResult result;
         result.request_id = request.request_id;
@@ -1326,116 +1347,147 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     if (clauses.size() < 2) return handle_single(request, clauses.front());
 
     planning::PlanningRequest planning_request;
-    planning_request.goal = "Execute a dependent folder-creation sequence";
+    planning_request.goal = "Execute a dependent filesystem operation sequence";
     std::map<std::string, std::string> local_paths;
     std::vector<std::string> target_paths;
     std::vector<std::string> folder_names;
     target_paths.reserve(clauses.size());
     folder_names.reserve(clauses.size());
+    std::string last_created_path;
 
     for (std::size_t index = 0; index < clauses.size(); ++index) {
         const auto intent = grammar_engine_.interpret(clauses[index]);
-        if (!intent.valid || intent.operation != "create" ||
-            intent.entity_type != "folder") {
+        if (!intent.valid) {
             return failure(request.request_id,
-                "Multi-step v0.1 currently supports dependent folder-creation sequences only.");
-        }
-        const std::filesystem::path folder_name(intent.name);
-        if (folder_name.empty() || folder_name.is_absolute() ||
-            folder_name.has_parent_path() || intent.name == "." || intent.name == "..") {
-            return failure(request.request_id, "A folder name must be a single path component.");
-        }
-        if (intent.destination.empty()) {
-            return failure(request.request_id, "Every folder-creation step needs a destination.");
-        }
-        if (local_paths.contains(lower(intent.name))) {
-            return failure(request.request_id,
-                "A folder name is repeated in the same sequence; use distinct names.");
-        }
-
-        std::string destination;
-        bool planned_destination = false;
-        const auto local = local_paths.find(lower(intent.destination));
-        if (local != local_paths.end()) {
-            destination = local->second;
-            planned_destination = true;
-        } else {
-            destination = resolve_destination(intent.destination);
-        }
-
-        std::error_code ec;
-        if (destination.empty() ||
-            (!planned_destination &&
-             (!std::filesystem::is_directory(destination, ec) || ec))) {
-            return failure(request.request_id,
-                "A folder destination does not exist or could not be resolved.");
-        }
-
-        entity_resolution::ResolutionRequest resolution_request;
-        resolution_request.query = std::filesystem::path(destination).filename().string();
-        resolution_request.expected_type = entity_resolution::EntityType::Folder;
-        resolution_request.context_hint = std::filesystem::path(destination).parent_path().string();
-        resolution_request.candidates.push_back({
-            destination, resolution_request.query,
-            entity_resolution::EntityType::Folder, resolution_request.context_hint,
-            "linux.filesystem", true, 0
-        });
-        const auto resolved = entity_resolver_.resolve(std::move(resolution_request));
-        if (resolved.status != entity_resolution::ResolutionStatus::Found) {
-            return failure(request.request_id, "A folder destination could not be resolved uniquely.");
-        }
-
-        const auto target = (std::filesystem::path(resolved.selected.id) / folder_name)
-            .lexically_normal().string();
-
-        reasoning::Fact fact;
-        fact.subject = target;
-        fact.property = "exists";
-        fact.value = platform_.filesystem().exists(target) ? "true" : "false";
-        fact.source = "linux.filesystem";
-        fact.confidence = 100;
-        fact.fresh = true;
-        reasoning::ReasoningRequest reasoning_request;
-        reasoning_request.query = {target, "exists", "false", true};
-        reasoning_request.facts.push_back(std::move(fact));
-        const auto reasoning_result = reasoning_engine_.evaluate(reasoning_request);
-        if (reasoning_result.truth != TruthValue::True) {
-            return failure(request.request_id,
-                "A target folder already exists or its state could not be determined.");
-        }
-
-        permissions::PermissionRequest permission_request;
-        permission_request.capability_id = "filesystem.create_directory";
-        permission_request.operation = "create_directory";
-        permission_request.resource_path = target;
-        permission_request.modifies_state = true;
-        const auto permission = permission_manager_.authorize(permission_request);
-        if (permission.decision != permissions::PermissionDecision::Allowed) {
-            return failure(request.request_id, permission.reason);
+                intent.error.empty() ? "A sequence step could not be understood." : intent.error);
         }
 
         planning::TaskDraft draft;
-        draft.id = "folder-step-" + std::to_string(index + 1);
-        draft.operation = "create_directory";
-        draft.input_data["path"] = target;
-        if (index > 0) draft.dependencies.push_back("folder-step-" + std::to_string(index));
-        planning_request.tasks.push_back(std::move(draft));
+        draft.id = "filesystem-step-" + std::to_string(index + 1);
+        if (index > 0) draft.dependencies.push_back("filesystem-step-" + std::to_string(index));
 
-        local_paths[lower(intent.name)] = target;
+        std::string target;
+        std::string display_name;
+
+        if (intent.operation == "create" && intent.entity_type == "folder") {
+            const std::filesystem::path folder_name(intent.name);
+            if (folder_name.empty() || folder_name.is_absolute() ||
+                folder_name.has_parent_path() || intent.name == "." || intent.name == "..") {
+                return failure(request.request_id, "A folder name must be a single path component.");
+            }
+            if (intent.destination.empty()) {
+                return failure(request.request_id, "Every folder-creation step needs a destination.");
+            }
+
+            const auto destination_name = lower(intent.destination);
+            std::string destination;
+            bool planned_destination = false;
+            if (destination_name == "it" || destination_name == "that" ||
+                destination_name == "that folder" || destination_name == "previous folder") {
+                destination = last_created_path;
+                planned_destination = !destination.empty();
+            } else {
+                const auto local = local_paths.find(destination_name);
+                if (local != local_paths.end()) {
+                    destination = local->second;
+                    planned_destination = true;
+                } else {
+                    destination = resolve_destination(intent.destination);
+                }
+            }
+
+            std::error_code ec;
+            if (destination.empty() ||
+                (!planned_destination &&
+                 (!std::filesystem::is_directory(destination, ec) || ec))) {
+                return failure(request.request_id,
+                    "A folder destination does not exist or could not be resolved.");
+            }
+            target = (std::filesystem::path(destination) / folder_name).lexically_normal().string();
+            if (platform_.filesystem().exists(target)) {
+                return failure(request.request_id, "A target folder with that name already exists.");
+            }
+
+            permissions::PermissionRequest permission;
+            permission.capability_id = "filesystem.create_directory";
+            permission.operation = "create_directory";
+            permission.resource_path = target;
+            permission.modifies_state = true;
+            const auto allowed = permission_manager_.authorize(permission);
+            if (allowed.decision != permissions::PermissionDecision::Allowed) {
+                return failure(request.request_id, allowed.reason);
+            }
+
+            draft.operation = "create_directory";
+            draft.input_data["path"] = target;
+            display_name = intent.name;
+            local_paths[lower(intent.name)] = target;
+        } else if (intent.operation == "rename") {
+            const auto source_name = lower(intent.source);
+            std::string source;
+            if (source_name == "it" || source_name == "that" ||
+                source_name == "that folder" || source_name == "previous folder") {
+                source = last_created_path;
+            } else {
+                const auto local = local_paths.find(source_name);
+                if (local != local_paths.end()) source = local->second;
+            }
+            if (source.empty()) {
+                return failure(request.request_id,
+                    "A rename step must refer to a folder created earlier in this sequence.");
+            }
+
+            const std::filesystem::path new_name(intent.destination);
+            if (new_name.empty() || new_name.is_absolute() || new_name.has_parent_path() ||
+                intent.destination == "." || intent.destination == "..") {
+                return failure(request.request_id, "The new folder name must be a single path component.");
+            }
+            target = (std::filesystem::path(source).parent_path() / new_name).lexically_normal().string();
+            if (platform_.filesystem().exists(target)) {
+                return failure(request.request_id, "The rename destination already exists.");
+            }
+
+            permissions::PermissionRequest permission;
+            permission.capability_id = "filesystem.rename";
+            permission.operation = "rename_path";
+            permission.resource_path = source;
+            permission.modifies_state = true;
+            const auto source_allowed = permission_manager_.authorize(permission);
+            if (source_allowed.decision != permissions::PermissionDecision::Allowed) {
+                return failure(request.request_id, source_allowed.reason);
+            }
+            permission.resource_path = target;
+            const auto destination_allowed = permission_manager_.authorize(permission);
+            if (destination_allowed.decision != permissions::PermissionDecision::Allowed) {
+                return failure(request.request_id, destination_allowed.reason);
+            }
+
+            draft.operation = "rename_path";
+            draft.input_data["source"] = source;
+            draft.input_data["destination"] = target;
+            display_name = intent.destination;
+            local_paths[lower(intent.destination)] = target;
+        } else {
+            return failure(request.request_id,
+                "Multi-step v0.1 supports folder creation and renaming folders created earlier in the sequence.");
+        }
+
+        planning_request.tasks.push_back(std::move(draft));
         target_paths.push_back(target);
-        folder_names.push_back(intent.name);
+        folder_names.push_back(display_name);
+        last_created_path = target;
     }
 
     auto plan = planning_engine_.create_plan(planning_request);
     if (!plan.valid || plan.tasks.size() != clauses.size()) {
-        return failure(request.request_id, "The multi-step folder plan could not be validated.");
+        return failure(request.request_id, "The multi-step filesystem plan could not be validated.");
     }
 
     std::size_t completed = 0;
     for (std::size_t index = 0; index < plan.tasks.size(); ++index) {
         auto& task = plan.tasks[index];
         if (!plan_state_manager_.start(plan, task.id)) {
-            return failure(request.request_id, "A dependent folder task could not start.");
+            return failure(request.request_id, "A dependent filesystem task could not start.");
         }
 
         execution::ExecutionRequest execution_request;
@@ -1454,24 +1506,32 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             return result;
         }
 
-        verification::VerificationRequest verification_request;
-        verification_request.operation = "create_directory";
-        verification_request.expected["exists"] = "true";
-        verification_request.actual["exists"] =
-            platform_.filesystem().exists(target_paths[index]) ? "true" : "false";
-        if (!verification_system_.verify(verification_request).verified) {
+        verification::VerificationRequest verification;
+        verification.operation = task.operation;
+        if (task.operation == "create_directory") {
+            verification.expected["exists"] = "true";
+            verification.actual["exists"] =
+                platform_.filesystem().exists(target_paths[index]) ? "true" : "false";
+        } else {
+            verification.expected["destination_exists"] = "true";
+            verification.actual["destination_exists"] =
+                platform_.filesystem().exists(target_paths[index]) ? "true" : "false";
+            verification.expected["source_exists"] = "false";
+            verification.actual["source_exists"] =
+                platform_.filesystem().exists(task.input_data.at("source")) ? "true" : "false";
+        }
+        if (!verification_system_.verify(verification).verified) {
             const bool marked_failed = plan_state_manager_.fail(plan, task.id);
             auto result = failure(request.request_id,
-                "A folder was created but its verification did not pass.");
+                "A filesystem operation ran but its verification did not pass.");
             if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
             return result;
         }
-
         if (!plan_state_manager_.complete(plan, task.id)) {
             auto result = failure(request.request_id,
-                "A folder was created and verified, but its plan state could not be completed.");
+                "An operation was verified, but its plan state could not be completed.");
             result.result_data["completed_steps"] = std::to_string(completed + 1);
             result.result_data["total_steps"] = std::to_string(clauses.size());
             return result;
@@ -1483,7 +1543,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     SubsystemResult result;
     result.request_id = request.request_id;
     result.status = SubsystemStatus::Success;
-    result.result_data["operation"] = "create_chain";
+    result.result_data["operation"] = "filesystem_chain";
     result.result_data["entity_type"] = "folder";
     result.result_data["count"] = std::to_string(completed);
     std::string joined_paths;
