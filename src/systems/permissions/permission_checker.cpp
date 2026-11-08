@@ -16,6 +16,7 @@ bool PermissionChecker::open_authorized_root(
     const capabilities::CapabilityDefinition& capability,
     std::shared_ptr<const AuthorizedRoot>& authorized_root) const {
     authorized_root.reset();
+    if (path.find(char(0)) != std::string::npos) return false;
     if (path.empty()) return capability.allowed_roots.empty();
     if (capability.allowed_roots.empty()) return false;
 
@@ -24,6 +25,7 @@ bool PermissionChecker::open_authorized_root(
     if (error) return false;
 
     for (const auto& root_text : capability.allowed_roots) {
+        if (root_text.find(char(0)) != std::string::npos) continue;
         error.clear();
         const auto root = fs::weakly_canonical(root_text, error);
         if (error || !root.is_absolute()) continue;

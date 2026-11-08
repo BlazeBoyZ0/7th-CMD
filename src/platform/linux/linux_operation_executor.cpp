@@ -1,6 +1,5 @@
 #include "seventh/platform/linux/linux_operation_executor.hpp"
 #include "seventh/systems/permissions/permission_types.hpp"
-#include "seventh/systems/permissions/permission_types.hpp"
 
 #include <algorithm>
 #include <cctype>

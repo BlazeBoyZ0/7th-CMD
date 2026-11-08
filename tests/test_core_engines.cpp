@@ -481,6 +481,8 @@ void test_descriptor_anchored_filesystem_operations() {
             request.resource_path, *authorized.authorized_root);
         expect(created_folder.success,
                "descriptor-relative creation safely creates missing parent directories");
+        expect(!filesystem.create_directory((root / "legacy-bypass").string()).success,
+               "legacy path-only mutation APIs fail closed without an authorized handle");
 
         const auto escaped_target = (link / "outside-write").string();
         request.resource_path = escaped_target;
@@ -509,6 +511,11 @@ void test_descriptor_anchored_filesystem_operations() {
             destination, *authorized.authorized_root);
         expect(removed.success && !std::filesystem::exists(destination),
                "descriptor-relative removal deletes the authorized target");
+        const auto removed_link = filesystem.remove_authorized(
+            link.string(), *authorized.authorized_root);
+        expect(removed_link.success && !std::filesystem::exists(link) &&
+                   std::filesystem::exists(outside),
+               "descriptor-relative removal unlinks a symlink without touching its target");
     }
 
     std::error_code ignored;

@@ -52,7 +52,7 @@ struct ParentHandle {
 bool relative_components(
     const std::string& path, const permissions::AuthorizedRoot& root,
     std::vector<std::string>& components, std::string& error) {
-    if (root.descriptor < 0 || root.canonical_path.empty() || !usable_path(path)) {
+    if (root.descriptor < 0 || root.canonical_path.empty() || root.canonical_path.find(char(0)) != std::string::npos || path.find(char(0)) != std::string::npos || !usable_path(path)) {
         error = "A valid authorized directory handle and absolute target path are required.";
         return false;
     }
@@ -195,48 +195,20 @@ std::optional<std::string> LinuxFilesystem::read_text(
                        std::istreambuf_iterator<char>());
 }
 
-PlatformResult LinuxFilesystem::create_directory(const std::string& path) {
-    if (!usable_path(path)) return failure("An absolute directory path is required.");
-    std::error_code ec;
-    if (fs::exists(path, ec)) {
-        if (ec) return failure(ec.message());
-        return failure("The destination already exists.");
-    }
-    if (ec) return failure(ec.message());
-
-    const bool created = fs::create_directories(path, ec);
-    if (ec) return failure(ec.message());
-    if (!created) return failure("The directory was not created.");
-    return {true, {}};
+PlatformResult LinuxFilesystem::create_directory(const std::string&) {
+    return failure("Directory creation requires an authorized directory handle.");
 }
 
-PlatformResult LinuxFilesystem::rename(
-    const std::string& source, const std::string& destination) {
-    if (!usable_path(source) || !usable_path(destination))
-        return failure("Absolute source and destination paths are required.");
-    std::error_code ec;
-    if (fs::exists(destination, ec)) return failure("The destination already exists.");
-    if (ec) return failure(ec.message());
-    fs::rename(source, destination, ec);
-    return ec ? failure(ec.message()) : PlatformResult{true, {}};
+PlatformResult LinuxFilesystem::rename(const std::string&, const std::string&) {
+    return failure("Rename requires authorized source and destination directory handles.");
 }
 
-PlatformResult LinuxFilesystem::copy(
-    const std::string& source, const std::string& destination) {
-    if (!usable_path(source) || !usable_path(destination))
-        return failure("Absolute source and destination paths are required.");
-    std::error_code ec;
-    const bool copied = fs::copy_file(source, destination, fs::copy_options::none, ec);
-    if (ec) return failure(ec.message());
-    return copied ? PlatformResult{true, {}} : failure("The file was not copied.");
+PlatformResult LinuxFilesystem::copy(const std::string&, const std::string&) {
+    return failure("Copy requires authorized source and destination directory handles.");
 }
 
-PlatformResult LinuxFilesystem::remove(const std::string& path) {
-    if (!usable_path(path)) return failure("An absolute path is required.");
-    std::error_code ec;
-    const bool removed = fs::remove(path, ec);
-    if (ec) return failure(ec.message());
-    return removed ? PlatformResult{true, {}} : failure("The target was not removed.");
+PlatformResult LinuxFilesystem::remove(const std::string&) {
+    return failure("Removal requires an authorized directory handle.");
 }
 
 PlatformResult LinuxFilesystem::create_directory_authorized(
