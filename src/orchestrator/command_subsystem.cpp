@@ -466,7 +466,10 @@ SubsystemResult CommandSubsystem::create_folder(
     verification_request.actual["exists"] =
         platform_.filesystem().exists(target_path) ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The operation ran, verification failed, and the plan state could not be marked failed.");
+        }
         return failure(request.request_id,
             "The operation ran, but verification could not confirm the new folder.");
     }
@@ -708,7 +711,10 @@ SubsystemResult CommandSubsystem::open_target(
     verification_request.actual["started"] =
         executed.output_data.contains("started") ? executed.output_data.at("started") : "false";
     if (!verification_system_.verify(verification_request).verified) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The open request could not be verified and the plan state could not be marked failed.");
+        }
         return failure(request.request_id, "The open request could not be verified.");
     }
 
@@ -1041,7 +1047,10 @@ SubsystemResult CommandSubsystem::modify_path(
             platform_.filesystem().exists(source_path.string()) ? "true" : "false";
     }
     if (!verification_system_.verify(verification_request).verified) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The filesystem operation ran, verification failed, and the plan state could not be marked failed.");
+        }
         return failure(request.request_id,
             "The filesystem operation ran, but verification did not pass.");
     }
@@ -1208,7 +1217,10 @@ SubsystemResult CommandSubsystem::delete_target(
     verification_request.actual["exists"] =
         platform_.filesystem().exists(path) ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The delete action ran, verification failed, and the plan state could not be marked failed.");
+        }
         return failure(request.request_id, "The delete action ran, but verification did not pass.");
     }
 
@@ -1355,11 +1367,17 @@ SubsystemResult CommandSubsystem::count_file(
     }
     const auto text_value = executed.output_data.find("text");
     if (text_value == executed.output_data.end()) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The file reader returned no text content and the plan state could not be marked failed.");
+        }
         return failure(request.request_id, "The file reader returned no text content.");
     }
     if (text_value->second.find('\0') != std::string::npos) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The selected file appears to contain binary data and the plan state could not be marked failed.");
+        }
         return failure(request.request_id, "The selected file appears to contain binary data.");
     }
 
@@ -1369,7 +1387,10 @@ SubsystemResult CommandSubsystem::count_file(
     data_request.text_input = text_value->second;
     const auto count = processor.process(data_request);
     if (!count.success) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                count.error + " The plan state could not be marked failed.");
+        }
         return failure(request.request_id, count.error);
     }
 
@@ -1379,7 +1400,10 @@ SubsystemResult CommandSubsystem::count_file(
     verification_request.actual["exists"] =
         platform_.filesystem().exists(path) ? "true" : "false";
     if (!verification_system_.verify(verification_request).verified) {
-        plan_state_manager_.fail(plan, plan.tasks.front().id);
+        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
+            return failure(request.request_id,
+                "The file could not be verified after reading, and the plan state could not be marked failed.");
+        }
         return failure(request.request_id, "The file could not be verified after reading.");
     }
 
