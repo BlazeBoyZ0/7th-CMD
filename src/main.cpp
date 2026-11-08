@@ -194,6 +194,7 @@ int main(int argc, char* argv[]) {
                         std::cout << "Candidates:\n" << options->second << '\n';
                     } else if (!outcome.result.error.empty()) {
                         std::cout << outcome.result.error << '\n';
+                        continue;
                     }
 
                     std::cout << question->question << " (or 'cancel'): " << std::flush;
@@ -205,7 +206,8 @@ int main(int argc, char* argv[]) {
                             cancelled = true;
                             break;
                         }
-                        std::cout << outcome.result.error << '\\n';
+                        std::cout << outcome.result.error << '\n';
+                        continue;
                     }
                     if (answer == "exit" || answer == "EXIT" || answer == "Exit") {
                         if (cancel_task(outcome,
@@ -214,7 +216,7 @@ int main(int argc, char* argv[]) {
                             exit_requested = true;
                             break;
                         }
-                        std::cout << outcome.result.error << '\\n';
+                        std::cout << outcome.result.error << '\n';
                     }
                     if (!orchestrator.resolve_question(
                             outcome.task_id, question->required_field, answer)) {
@@ -236,7 +238,7 @@ int main(int argc, char* argv[]) {
                 if (confirmation != "yes" && confirmation != "YES" &&
                     confirmation != "Yes") {
                     if (cancel_task(outcome, "Deletion cancelled.")) break;
-                    std::cout << outcome.result.error << '\\n';
+                    std::cout << outcome.result.error << '\n';
                     continue;
                 }
                 outcome = orchestrator.continue_task(outcome.task_id, true);
