@@ -10,6 +10,7 @@ public:
  [[nodiscard]] ExecutionResult execute(const ExecutionRequest& request);
  [[nodiscard]] ExecutionState state_of(const std::string& task_id) const;
  [[nodiscard]] std::optional<ExecutionRecord> record_of(const std::string& task_id) const;
+ [[nodiscard]] bool set_verification(const std::string& task_id, VerificationOutcome outcome);
 private:
  ActionDispatcher dispatcher_;
  ExecutionTracker tracker_;
