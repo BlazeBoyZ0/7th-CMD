@@ -317,9 +317,30 @@ TaskOutcome Orchestrator::continue_task(
     }
     outcome.subsystem_id = std::string(pending->second.subsystem->id());
     outcome.result.request_id = request.request_id;
+    if (!request.cancellation_requested) {
+        request.cancellation_requested = std::make_shared<std::atomic_bool>(false);
+    }
+    {
+        std::lock_guard lock(cancellation_mutex_);
+        cancellation_tokens_[task_id] = request.cancellation_requested;
+    }
     outcome.result = result_handler_.normalize(
         dispatcher_.dispatch(*pending->second.subsystem, request),
         request.request_id);
+    {
+        std::lock_guard lock(cancellation_mutex_);
+        cancellation_tokens_.erase(task_id);
+    }
+    if (request.cancellation_requested->load()) {
+        if (outcome.result.error.empty()) {
+            outcome.result.error = "Cancellation requested; the active operation was allowed to finish safely.";
+        }
+        pending_tasks_.erase(task_id);
+        outcome.state = task_states_.state_of(task_id);
+        record_error(outcome);
+        record_context(outcome);
+        return outcome;
+    }
 
     const auto next = workflow_.next_state(outcome.result);
     if (!task_states_.transition(task_id, next)) {
