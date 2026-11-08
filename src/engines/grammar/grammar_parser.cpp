@@ -70,11 +70,20 @@ std::vector<std::string> normalize_count_instruction(
     }
     if (file_index == lowered.size() || file_index + 1 >= tokens.size()) return {};
 
+    std::size_t target_index = file_index + 1;
+    if (target_index < lowered.size() && lowered[target_index] == "the") {
+        ++target_index;
+    }
+    if (target_index < lowered.size() && lowered[target_index] == "file") {
+        ++target_index;
+    }
+    if (target_index >= tokens.size()) return {};
+
     std::vector<std::string> canonical{
         "count", lowered[metric_index], "file"
     };
     canonical.insert(canonical.end(), tokens.begin() +
-        static_cast<std::ptrdiff_t>(file_index + 1), tokens.end());
+        static_cast<std::ptrdiff_t>(target_index), tokens.end());
     return canonical;
 }
 
