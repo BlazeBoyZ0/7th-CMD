@@ -37,6 +37,13 @@ struct PermissionResult {
     PermissionDecision decision{PermissionDecision::Denied};
     std::string reason;
     std::shared_ptr<const AuthorizedRoot> authorized_root;
+
+    PermissionResult() = default;
+    PermissionResult(
+        PermissionDecision permission_decision, std::string message,
+        std::shared_ptr<const AuthorizedRoot> root = {})
+        : decision(permission_decision), reason(std::move(message)),
+          authorized_root(std::move(root)) {}
 };
 
 } // namespace seventh::permissions
