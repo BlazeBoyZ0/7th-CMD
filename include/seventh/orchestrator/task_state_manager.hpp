@@ -3,6 +3,7 @@
 #include "seventh/core/types.hpp"
 
 #include <map>
+#include <mutex>
 
 namespace seventh {
 
@@ -13,6 +14,7 @@ public:
     [[nodiscard]] TaskState state_of(const TaskId& task_id) const;
 
 private:
+    mutable std::mutex mutex_;
     std::map<TaskId, TaskState> states_;
 };
 
