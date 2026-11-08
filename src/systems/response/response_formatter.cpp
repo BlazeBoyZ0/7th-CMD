@@ -1,4 +1,5 @@
 #include "seventh/systems/response/response_formatter.hpp"
+#include "seventh/cli/terminal_output.hpp"
 
 #include <sstream>
 
@@ -39,8 +40,8 @@ std::string ResponseFormatter::format(const ResponseData& data) const {
         break;
     }
 
-    if (!data.operation.empty()) output << " (" << data.operation << ")";
-    if (!data.error.empty()) output << ": " << data.error;
+    if (!data.operation.empty()) output << " (" << cli::escape_terminal_text(data.operation) << ")";
+    if (!data.error.empty()) output << ": " << cli::escape_terminal_text(data.error);
     for (const auto& missing : data.missing_information) {
         output << "\nMissing: " << missing;
     }

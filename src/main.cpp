@@ -192,12 +192,13 @@ int main(int argc, char* argv[]) {
                     if (options != outcome.result.result_data.end() &&
                         !options->second.empty()) {
                         std::cout << "Candidates:\n" << options->second << '\n';
-                    } else if (!outcome.result.error.empty()) {
-                        std::cout << outcome.result.error << '\n';
-                        continue;
                     }
 
-                    std::cout << question->question << " (or 'cancel'): " << std::flush;
+                    if (!outcome.result.error.empty()) {
+                        std::cout << seventh::cli::escape_terminal_text(outcome.result.error) << '\n';
+                    }
+                    std::cout << seventh::cli::escape_terminal_text(question->question)
+                              << " (or 'cancel'): " << std::flush;
                     const auto answer = input_handler.read_line();
                     if (answer.empty() || answer == "cancel" || answer == "CANCEL" ||
                         answer == "Cancel") {
@@ -233,7 +234,8 @@ int main(int argc, char* argv[]) {
                 outcome.result.result_data.contains("confirmation_action") &&
                 outcome.result.result_data.at("confirmation_action") == "delete") {
                 std::cout << "Confirm deletion of "
-                          << outcome.result.result_data.at("path")
+                          << seventh::cli::escape_terminal_text(
+                                 outcome.result.result_data.at("path"))
                           << "? Type yes to continue, anything else to cancel: " << std::flush;
                 const auto confirmation = input_handler.read_line();
                 if (confirmation != "yes" && confirmation != "YES" &&

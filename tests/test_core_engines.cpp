@@ -1,4 +1,5 @@
 #include "seventh/engines/grammar/grammar_engine.hpp"
+#include "seventh/cli/terminal_output.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
 #include "seventh/engines/reasoning/rule_evaluator.hpp"
 #include "seventh/engines/reasoning/truth_evaluator.hpp"
@@ -419,6 +420,19 @@ void test_permission_boundaries() {
            "disabled capabilities cannot authorize operations");
 }
 
+void test_terminal_output_escaping() {
+    const std::string hostile = std::string("name") + char(0x1B) +
+        "[31m" + "\xE2\x80\xAE" + "txt";
+    const auto escaped = seventh::cli::escape_terminal_text(hostile);
+    expect(escaped == "name\\x1B[31m\\u{202E}txt",
+           "terminal control and bidi formatting characters are escaped");
+    expect(seventh::cli::escape_terminal_text("caf\xC3\xA9") == "caf\xC3\xA9",
+           "ordinary UTF-8 filename characters are preserved");
+    expect(seventh::cli::escape_terminal_text(std::string("bad") + char(0xFF)) ==
+               "bad\\xFF",
+           "invalid UTF-8 bytes are escaped rather than passed to the terminal");
+}
+
 } // namespace
 
 int main() {
@@ -430,6 +444,7 @@ int main() {
     test_planning_dependencies();
     test_permission_boundaries();
     test_task_lifecycle();
+    test_terminal_output_escaping();
 
     if (failures != 0) {
         std::cerr << failures << " test(s) failed.\n";
