@@ -200,17 +200,21 @@ int main(int argc, char* argv[]) {
                     const auto answer = input_handler.read_line();
                     if (answer.empty() || answer == "cancel" || answer == "CANCEL" ||
                         answer == "Cancel") {
-                        cancel_task(outcome,
-                            "The task was cancelled while waiting for clarification.");
-                        cancelled = true;
-                        break;
+                        if (cancel_task(outcome,
+                                "The task was cancelled while waiting for clarification.")) {
+                            cancelled = true;
+                            break;
+                        }
+                        std::cout << outcome.result.error << '\\n';
                     }
                     if (answer == "exit" || answer == "EXIT" || answer == "Exit") {
-                        cancel_task(outcome,
-                            "The task was cancelled while waiting for clarification.");
-                        cancelled = true;
-                        exit_requested = true;
-                        break;
+                        if (cancel_task(outcome,
+                                "The task was cancelled while waiting for clarification.")) {
+                            cancelled = true;
+                            exit_requested = true;
+                            break;
+                        }
+                        std::cout << outcome.result.error << '\\n';
                     }
                     if (!orchestrator.resolve_question(
                             outcome.task_id, question->required_field, answer)) {
@@ -231,8 +235,9 @@ int main(int argc, char* argv[]) {
                 const auto confirmation = input_handler.read_line();
                 if (confirmation != "yes" && confirmation != "YES" &&
                     confirmation != "Yes") {
-                    cancel_task(outcome, "Deletion cancelled.");
-                    break;
+                    if (cancel_task(outcome, "Deletion cancelled.")) break;
+                    std::cout << outcome.result.error << '\\n';
+                    continue;
                 }
                 outcome = orchestrator.continue_task(outcome.task_id, true);
                 continue;
