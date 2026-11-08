@@ -46,3 +46,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_test(NAME 7thcmd_core_engines COMMAND 7thcmd_tests)
+
+add_executable(7thcmd_execution_record_tests
+    test_execution_records.cpp
+    ../src/engines/execution/action_dispatcher.cpp
+    ../src/engines/execution/execution_engine.cpp
+    ../src/engines/execution/execution_tracker.cpp
+)
+target_include_directories(7thcmd_execution_record_tests PRIVATE ../include)
+target_compile_features(7thcmd_execution_record_tests PRIVATE cxx_std_20)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(7thcmd_execution_record_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME 7thcmd_execution_records COMMAND 7thcmd_execution_record_tests)
