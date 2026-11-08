@@ -65,6 +65,12 @@ TaskOutcome Orchestrator::execute(
         return finish();
     }
 
+    if (request.cancellation_requested->load()) {
+        outcome.result.status = SubsystemStatus::Failure;
+        outcome.result.error = "Task cancelled before execution began.";
+        return finish();
+    }
+
     if (!request.valid()) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "The orchestrator received an incomplete subsystem request.";
@@ -95,6 +101,11 @@ TaskOutcome Orchestrator::execute(
     }
 
     outcome.subsystem_id = std::string(subsystem->id());
+    if (request.cancellation_requested->load()) {
+        outcome.result.status = SubsystemStatus::Failure;
+        outcome.result.error = "Task cancelled before the subsystem started.";
+        return finish();
+    }
     if (!task_states_.transition(request.task_id, TaskState::Processing)) {
         outcome.result.status = SubsystemStatus::Failure;
         outcome.result.error = "Unable to enter the processing state.";
@@ -214,7 +225,10 @@ bool Orchestrator::cancel(const TaskId& task_id) {
 
     // During active processing, leave shared context/pending-task containers to
     // the execution thread. The atomic token is observed between plan steps.
-    if (previous_state == TaskState::Processing) return true;
+    if (previous_state == TaskState::New ||
+        previous_state == TaskState::Understanding ||
+        previous_state == TaskState::Routing ||
+        previous_state == TaskState::Processing) return true;
 
     interactions_.cancel(task_id);
     pending_tasks_.erase(task_id);
