@@ -100,6 +100,9 @@ bool ExecutionEngine::set_verification(
     const auto found = records_.find(task_id);
     if (found == records_.end() || found->second.steps.empty()) return false;
     found->second.steps.back().verification = outcome;
+    if (outcome == VerificationOutcome::Failed) {
+        found->second.status = ExecutionStatus::Failure;
+    }
     return true;
 }
 
