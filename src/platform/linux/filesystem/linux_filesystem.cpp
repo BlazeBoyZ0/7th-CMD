@@ -14,6 +14,10 @@
 
 #include <fcntl.h>
 #include <linux/fs.h>
+#if __has_include(<linux/openat2.h>)
+#include <linux/openat2.h>
+#define SEVENTH_CMD_HAS_OPENAT2 1
+#endif
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -85,6 +89,37 @@ ParentHandle open_parent(
     const permissions::AuthorizedRoot& root,
     bool create_missing, std::string& error) {
     ParentHandle result;
+    if (components.empty()) {
+        error = "A target path must contain a name.";
+        return result;
+    }
+
+    std::string parent_path;
+    for (std::size_t index = 0; index + 1 < components.size(); ++index) {
+        if (!parent_path.empty()) parent_path += '/';
+        parent_path += components[index];
+    }
+
+#if defined(SEVENTH_CMD_HAS_OPENAT2) && defined(SYS_openat2)
+    if (!parent_path.empty()) {
+        struct open_how how {};
+        how.flags = O_RDONLY | O_DIRECTORY | O_CLOEXEC;
+        how.resolve = RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_SYMLINKS;
+        const int descriptor = static_cast<int>(::syscall(
+            SYS_openat2, root.descriptor, parent_path.c_str(), &how, sizeof(how)));
+        if (descriptor >= 0) {
+            result.descriptor = descriptor;
+            result.leaf = components.back();
+            return result;
+        }
+        if (errno != ENOSYS && errno != EINVAL &&
+            !(create_missing && errno == ENOENT)) {
+            error = system_error("Unable to safely resolve the target parent");
+            return result;
+        }
+    }
+#endif
+
     result.descriptor = ::fcntl(root.descriptor, F_DUPFD_CLOEXEC, 0);
     if (result.descriptor < 0) {
         error = system_error("Unable to duplicate the authorized directory handle");
@@ -217,43 +252,12 @@ PlatformResult LinuxFilesystem::create_directory_authorized(
     std::string error;
     if (!get_components(path, root, components, error)) return failure(error);
 
-    int current = ::fcntl(root.descriptor, F_DUPFD_CLOEXEC, 0);
-    if (current < 0) return failure(system_error("Unable to duplicate authorized root"));
-
-    for (std::size_t index = 0; index < components.size(); ++index) {
-        const bool final = index + 1 == components.size();
-        if (final) {
-            if (::mkdirat(current, components[index].c_str(), 0755) < 0) {
-                error = system_error("Unable to create the requested directory");
-                ::close(current);
-                return failure(error);
-            }
-            ::close(current);
-            return {true, {}};
-        }
-
-        int next = ::openat(current, components[index].c_str(),
-                            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-        if (next < 0 && errno == ENOENT) {
-            if (::mkdirat(current, components[index].c_str(), 0755) < 0 &&
-                errno != EEXIST) {
-                error = system_error("Unable to create a parent directory");
-                ::close(current);
-                return failure(error);
-            }
-            next = ::openat(current, components[index].c_str(),
-                             O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-        }
-        if (next < 0) {
-            error = system_error("Unable to safely open a parent directory");
-            ::close(current);
-            return failure(error);
-        }
-        ::close(current);
-        current = next;
+    auto parent = open_parent(components, root, true, error);
+    if (parent.descriptor < 0) return failure(error);
+    if (::mkdirat(parent.descriptor, parent.leaf.c_str(), 0755) < 0) {
+        return failure(system_error("Unable to create the requested directory"));
     }
-    ::close(current);
-    return failure("The requested directory was not created.");
+    return {true, {}};
 }
 
 PlatformResult LinuxFilesystem::rename_authorized(
