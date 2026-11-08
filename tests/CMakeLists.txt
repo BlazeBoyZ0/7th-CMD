@@ -61,6 +61,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME 7thcmd_execution_records COMMAND 7thcmd_execution_record_tests)
 
+add_test(
+    NAME 7thcmd_rename_clarification
+    COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/test_rename_clarification.sh $<TARGET_FILE:7thcmd>
+)
+
 target_compile_definitions(7thcmd_tests PRIVATE
     SEVENTH_CMD_TEST_GRAMMAR_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../config/grammar\"
 )

@@ -860,6 +860,14 @@ SubsystemResult CommandSubsystem::modify_path(
     const char* home = std::getenv("HOME");
     if (!home) return failure(request.request_id, "The user's home directory is unavailable.");
 
+    // Clarification answers are stored on the pending request. Apply the
+    // supplied destination before resolving or validating the operation.
+    std::string destination_value = destination_value;
+    if (destination_value.empty()) {
+        const auto answer = request.context.find("clarification.destination");
+        if (answer != request.context.end()) destination_value = answer->second;
+    }
+
     const std::vector<std::filesystem::path> roots{
         home,
         std::filesystem::path(home) / "Desktop",
@@ -959,16 +967,16 @@ SubsystemResult CommandSubsystem::modify_path(
     std::string execution_operation;
 
     if (intent.operation == "rename") {
-        const std::filesystem::path new_name(intent.destination);
+        const std::filesystem::path new_name(destination_value);
         if (new_name.empty() || new_name.is_absolute() || new_name.has_parent_path() ||
-            intent.destination == "." || intent.destination == "..") {
+            destination_value == "." || destination_value == "..") {
             return failure(request.request_id, "The new name must be a single path component.");
         }
         destination_path = source_path.parent_path() / new_name;
         capability_id = "filesystem.rename";
         execution_operation = "rename_path";
     } else {
-        const auto destination_directory = resolve_destination(intent.destination);
+        const auto destination_directory = resolve_destination(destination_value);
         std::error_code ec;
         if (destination_directory.empty() ||
             !std::filesystem::is_directory(destination_directory, ec) || ec) {
