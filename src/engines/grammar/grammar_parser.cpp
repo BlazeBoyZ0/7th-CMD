@@ -88,10 +88,14 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens,
                                 const GrammarConfig& config) const {
     ParseMatch match;
     auto prepared = tokens;
-    if (!prepared.empty() &&
-        (lower(prepared.front()) == "how" || lower(prepared.front()) == "what")) {
-        for (std::size_t index = 1; index < prepared.size() && index < 5; ++index) {
-            prepared[index] = config.canonical_term(prepared[index]);
+    if (!prepared.empty()) {
+        const auto first = lower(prepared.front());
+        if (first == "how" || first == "what") {
+            for (std::size_t index = 1; index < prepared.size() && index < 5; ++index) {
+                prepared[index] = config.canonical_term(prepared[index]);
+            }
+        } else if (first == "count" && prepared.size() > 1) {
+            prepared[1] = config.canonical_term(prepared[1]);
         }
     }
 
