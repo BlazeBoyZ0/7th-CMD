@@ -1637,7 +1637,11 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             verification.actual["source_exists"] =
                 platform_.filesystem().exists(task.input_data.at("source")) ? "true" : "false";
         }
-        if (!verification_system_.verify(verification).verified) {
+        const auto verification_result = verification_system_.verify(verification);
+        (void)execution_engine_.set_verification(execution_request.task_id,
+            verification_result.verified ? execution::VerificationOutcome::Passed
+                                         : execution::VerificationOutcome::Failed);
+        if (!verification_result.verified) {
             const bool marked_failed = plan_state_manager_.fail(plan, task.id);
             auto result = failure(request.request_id,
                 "A filesystem operation ran but its verification did not pass.");
