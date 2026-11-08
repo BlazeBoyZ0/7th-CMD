@@ -1598,6 +1598,16 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         return joined;
     };
     for (std::size_t index = 0; index < plan.tasks.size(); ++index) {
+        if (request.cancellation_requested &&
+            request.cancellation_requested->load()) {
+            auto result = failure(request.request_id,
+                "Task cancelled between execution steps; completed work was left intact.");
+            result.result_data["cancelled"] = "true";
+            result.result_data["completed_steps"] = std::to_string(completed);
+            result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            return result;
+        }
         auto& task = plan.tasks[index];
         if (!plan_state_manager_.start(plan, task.id)) {
             return failure(request.request_id, "A dependent filesystem task could not start.");
@@ -1658,6 +1668,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
                 "An operation was verified, but its plan state could not be completed.");
             result.result_data["completed_steps"] = std::to_string(completed + 1);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
         remember_folder(folder_names[index], target_paths[index]);
@@ -1679,6 +1690,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     result.result_data["path"] = target_paths.back();
     result.result_data["name"] = folder_names.back();
     result.result_data["verified"] = "true";
+    result.result_data["execution_record_ids"] = joined_execution_record_ids();
     return result;
 }
 
