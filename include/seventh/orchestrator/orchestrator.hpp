@@ -15,6 +15,7 @@
 #include "seventh/systems/recovery/recovery_manager.hpp"
 
 #include <map>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -79,6 +80,8 @@ private:
     knowledge::KnowledgeSystem knowledge_;
     knowledge::ContextManager contexts_;
     std::map<TaskId, PendingTask> pending_tasks_;
+    std::mutex cancellation_mutex_;
+    std::map<TaskId, std::shared_ptr<std::atomic_bool>> cancellation_tokens_;
     recovery::ErrorManager error_manager_;
     recovery::RecoveryManager recovery_manager_;
 };
