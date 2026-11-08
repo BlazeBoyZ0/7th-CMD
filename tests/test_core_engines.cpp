@@ -5,6 +5,7 @@
 #include "seventh/systems/permissions/permission_manager.hpp"
 #include "seventh/orchestrator/task_state_manager.hpp"
 #include "seventh/orchestrator/workflow_controller.hpp"
+#include "seventh/systems/entity_resolution/entity_resolver.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -51,9 +52,50 @@ void test_grammar_interpretation() {
                search.query == "report" && search.destination == "Documents",
            "the grammar extracts a search query and location");
 
+    const auto nested = grammar.interpret("create a new folder inside it named Minecraft");
+    expect(nested.valid && nested.name == "Minecraft" && nested.destination == "it",
+           "the grammar extracts a folder name following its inside destination");
+
+    const auto scoped_search = grammar.interpret("search for folders named Projects on Desktop");
+    expect(scoped_search.valid && scoped_search.query == "Projects" &&
+               scoped_search.destination == "Desktop",
+           "the grammar extracts an on-Desktop search scope");
+
     const auto incomplete = grammar.interpret("create a folder");
     expect(!incomplete.valid && !incomplete.missing_information.empty(),
            "incomplete instructions request missing information");
+}
+
+void test_entity_resolution_relevance() {
+    using namespace seventh::entity_resolution;
+    ResolutionRequest unrelated;
+    unrelated.query = "Alpha";
+    unrelated.expected_type = EntityType::Application;
+    unrelated.context_hint = "/home/test";
+    unrelated.candidates.push_back({
+        "about.desktop", "About Me", EntityType::Application,
+        "/home/test/about.desktop", "test", true, 0
+    });
+    const auto no_match = EntityResolver{}.resolve(unrelated);
+    expect(no_match.status == ResolutionStatus::NotFound &&
+               no_match.candidates.empty(),
+           "unrelated same-type candidates do not become false matches");
+
+    ResolutionRequest duplicates;
+    duplicates.query = "test.kek";
+    duplicates.expected_type = EntityType::File;
+    duplicates.candidates.push_back({
+        "/home/test/Desktop/test.kek", "test.kek", EntityType::File,
+        "/home/test/Desktop", "test", true, 0
+    });
+    duplicates.candidates.push_back({
+        "/home/test/Documents/test.kek", "test.kek", EntityType::File,
+        "/home/test/Documents", "test", true, 0
+    });
+    const auto ambiguous = EntityResolver{}.resolve(duplicates);
+    expect(ambiguous.status == ResolutionStatus::Ambiguous &&
+               ambiguous.candidates.size() == 2,
+           "genuine duplicate exact matches remain available for clarification");
 }
 
 void test_three_valued_logic() {
@@ -249,6 +291,7 @@ void test_permission_boundaries() {
 
 int main() {
     test_grammar_interpretation();
+    test_entity_resolution_relevance();
     test_three_valued_logic();
     test_rule_inference();
     test_planning_dependencies();
