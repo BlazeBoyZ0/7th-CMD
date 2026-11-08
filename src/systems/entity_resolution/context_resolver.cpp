@@ -20,11 +20,9 @@ void ContextResolver::apply(
     const auto context_hint = lower(request.context_hint);
 
     for (auto& candidate : candidates) {
-        if (request.expected_type != EntityType::Unknown &&
-            candidate.type == request.expected_type) {
-            candidate.score += 20;
-        }
-        if (!context_hint.empty() &&
+        // Candidate discovery already enforces the requested entity type.
+        // Context must refine a name match, never manufacture one.
+        if (candidate.score > 0 && !context_hint.empty() &&
             lower(candidate.location).find(context_hint) != std::string::npos) {
             candidate.score += 10;
         }
