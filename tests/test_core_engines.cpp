@@ -119,7 +119,7 @@ void test_document_provider_rejects_binary_content() {
     expect(!records.empty() && records.front().at("text") == "ordinary text",
            "the document provider returns the accepted text");
 
-    platform.filesystem_.content = std::string("before\\0after", 12);
+    platform.filesystem_.content = std::string("before\0after", 12);
     error.clear();
     expect(!provider->acquire(request, records, error) &&
                error.find("binary") != std::string::npos,
