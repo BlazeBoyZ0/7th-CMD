@@ -1,5 +1,7 @@
 add_executable(7thcmd_tests
     test_core_engines.cpp
+    ../src/systems/information/platform_data_providers.cpp
+    ../src/systems/information/provider_registry.cpp
     ../src/engines/grammar/ast_generator.cpp
     ../src/engines/grammar/cir_generator.cpp
     ../src/engines/grammar/grammar_engine.cpp
