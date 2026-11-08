@@ -560,6 +560,22 @@ SubsystemResult CommandSubsystem::open_target(
         entity_resolution::ResolutionRequest folder_request;
         folder_request.query = intent.name;
         folder_request.expected_type = entity_resolution::EntityType::Folder;
+        if (const auto* session = context_manager_.find("session")) {
+            const auto key = "folder:" + wanted;
+            const auto remembered = session->values.find(key);
+            if (remembered != session->values.end()) {
+                std::error_code remembered_error;
+                if (std::filesystem::is_directory(remembered->second, remembered_error) &&
+                    !remembered_error) {
+                    folder_request.candidates.push_back({
+                        remembered->second, std::filesystem::path(remembered->second).filename().string(),
+                        entity_resolution::EntityType::Folder,
+                        std::filesystem::path(remembered->second).parent_path().string(),
+                        "session.context", true, 0
+                    });
+                }
+            }
+        }
 
         for (const auto& root : roots) {
             std::string list_error;
@@ -839,15 +855,33 @@ SubsystemResult CommandSubsystem::modify_path(
         std::filesystem::path(home) / "Downloads"
     };
 
+    std::string source_query = intent.source;
+    const auto source_reference = lower(source_query);
+    if (source_reference == "it" || source_reference == "that" ||
+        source_reference == "that file" || source_reference == "that folder" ||
+        source_reference == "previous file" || source_reference == "previous folder") {
+        if (const auto* session = context_manager_.find("session")) {
+            const auto last_path = session->values.find("last_entity.path");
+            const auto last_type = session->values.find("last_entity.type");
+            if (last_path != session->values.end() && last_type != session->values.end()) {
+                const bool compatible =
+                    intent.entity_type == "item" ||
+                    (intent.entity_type == "folder" && last_type->second == "folder") ||
+                    (intent.entity_type == "file" && last_type->second == "file");
+                if (compatible) source_query = last_path->second;
+            }
+        }
+    }
+
     entity_resolution::ResolutionRequest source_request;
-    source_request.query = intent.source;
+    source_request.query = source_query;
     if (intent.entity_type == "file") {
         source_request.expected_type = entity_resolution::EntityType::File;
     } else if (intent.entity_type == "folder") {
         source_request.expected_type = entity_resolution::EntityType::Folder;
     }
 
-    const std::filesystem::path source_as_path(intent.source);
+    const std::filesystem::path source_as_path(source_query);
     std::filesystem::path resolved_source;
     if (source_as_path.is_absolute()) {
         resolved_source = source_as_path;
@@ -1021,6 +1055,14 @@ SubsystemResult CommandSubsystem::modify_path(
     result.result_data["source"] = source_path.string();
     result.result_data["destination"] = destination_path.string();
     result.result_data["verified"] = "true";
+    if (intent.operation != "copy") {
+        auto& session = context_manager_.create("session");
+        session.values["last_entity.type"] =
+            selected_source.type == entity_resolution::EntityType::Folder ? "folder" : "file";
+        session.values["last_entity.name"] = destination_path.filename().string();
+        session.values["last_entity.path"] = destination_path.string();
+        session.values.erase("last_entity.id");
+    }
     return result;
 }
 
@@ -1195,10 +1237,24 @@ SubsystemResult CommandSubsystem::count_file(
     else return failure(request.request_id,
         "Choose a supported count: words, lines, or characters.");
 
+    std::string requested_name = intent.name;
+    const auto reference = lower(requested_name);
+    if (reference == "it" || reference == "that" || reference == "that file" ||
+        reference == "previous file") {
+        if (const auto* session = context_manager_.find("session")) {
+            const auto last_path = session->values.find("last_entity.path");
+            const auto last_type = session->values.find("last_entity.type");
+            if (last_path != session->values.end() && last_type != session->values.end() &&
+                last_type->second == "file") {
+                requested_name = last_path->second;
+            }
+        }
+    }
+
     entity_resolution::ResolutionRequest file_request;
-    file_request.query = intent.name;
+    file_request.query = requested_name;
     file_request.expected_type = entity_resolution::EntityType::File;
-    const std::filesystem::path requested(intent.name);
+    const std::filesystem::path requested(requested_name);
     std::filesystem::path resolved_path;
     if (requested.is_absolute()) resolved_path = requested;
     else {
@@ -1338,6 +1394,11 @@ SubsystemResult CommandSubsystem::count_file(
     result.result_data["value"] = count.scalar;
     result.result_data["bytes"] = executed.output_data.contains("bytes")
         ? executed.output_data.at("bytes") : "0";
+    auto& session = context_manager_.create("session");
+    session.values["last_entity.type"] = "file";
+    session.values["last_entity.name"] = result.result_data["name"];
+    session.values["last_entity.path"] = path;
+    session.values.erase("last_entity.id");
     return result;
 }
 
