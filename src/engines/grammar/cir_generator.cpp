@@ -1,5 +1,6 @@
 #include "seventh/engines/grammar/cir_generator.hpp"
 
+#include <algorithm>
 #include <cctype>
 
 namespace seventh::grammar {
@@ -62,12 +63,27 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
         if (target_start < tokens.size() && lower(tokens[target_start]) == "named") {
             ++target_start;
         }
-        auto end = find_token(tokens, "on", target_start);
-        if (end == tokens.size()) end = find_token(tokens, "in", target_start);
-        if (end == tokens.size()) end = tokens.size();
-        intent.name = join(tokens, target_start, end);
-        if (end < tokens.size() && end + 1 < tokens.size()) {
-            intent.destination = join(tokens, end + 1, tokens.size());
+        auto end = tokens.size();
+        for (const auto* separator : {"on", "in", "inside", "within"}) {
+            end = std::min(end, find_token(tokens, separator, target_start));
+        }
+        const auto named = find_token(tokens, "named", target_start);
+        if (named < end) {
+            intent.name = join(tokens, named + 1, end);
+            if (end < tokens.size() && end + 1 < tokens.size()) {
+                intent.destination = join(tokens, end + 1, tokens.size());
+            }
+        } else if (end < tokens.size()) {
+            const auto named_after_destination = find_token(tokens, "named", end + 1);
+            if (named_after_destination < tokens.size()) {
+                intent.destination = join(tokens, end + 1, named_after_destination);
+                intent.name = join(tokens, named_after_destination + 1, tokens.size());
+            } else {
+                intent.name = join(tokens, target_start, end);
+                intent.destination = join(tokens, end + 1, tokens.size());
+            }
+        } else {
+            intent.name = join(tokens, target_start, end);
         }
     } else if (node.operation == "rename" || node.operation == "move" ||
                node.operation == "copy") {
@@ -98,8 +114,10 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,
             ++query_start;
         }
 
-        auto location = find_token(tokens, "in", query_start);
-        if (location == tokens.size()) location = tokens.size();
+        auto location = tokens.size();
+        for (const auto* separator : {"in", "on", "inside", "within"}) {
+            location = std::min(location, find_token(tokens, separator, query_start));
+        }
         intent.query = join(tokens, query_start, location);
         if (location < tokens.size() && location + 1 < tokens.size()) {
             intent.destination = join(tokens, location + 1, tokens.size());
