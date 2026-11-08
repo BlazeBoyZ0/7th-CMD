@@ -46,9 +46,14 @@ SubsystemResult needs_choice(
     result.request_id = id;
     result.status = SubsystemStatus::NeedsInformation;
     result.missing_information.emplace_back(kind + " choice");
-    result.error = invalid_answer
-        ? "The supplied choice did not identify exactly one matching " + kind + "."
-        : "More than one matching " + kind + " was found.";
+    if (invalid_answer) {
+        result.error = "The supplied choice did not identify exactly one matching " + kind + ".";
+    } else if (candidates.size() == 1) {
+        result.error = "The best matching " + kind +
+            " is uncertain. Confirm whether this is the intended target.";
+    } else {
+        result.error = "More than one matching " + kind + " was found.";
+    }
 
     result.result_data["choice_kind"] = kind;
     result.result_data["choice_count"] = std::to_string(candidates.size());
