@@ -23,7 +23,15 @@ bool is_count_metric(const std::string& token) {
     return metrics.contains(token);
 }
 
-std::vector<std::string> normalize_count_question(
+std::string plural_metric(std::string metric) {
+    if (metric == "word") return "words";
+    if (metric == "line") return "lines";
+    if (metric == "character") return "characters";
+    if (metric == "byte") return "bytes";
+    return metric;
+}
+
+std::vector<std::string> normalize_count_instruction(
     const std::vector<std::string>& tokens) {
     if (tokens.size() < 4) return {};
 
@@ -34,17 +42,14 @@ std::vector<std::string> normalize_count_question(
     const bool how_question = lowered[0] == "how" &&
         (lowered[1] == "many" || lowered[1] == "much");
     const bool what_question = lowered[0] == "what" &&
-        lowered.size() > 3 && lowered[1] == "is";
-    if (!how_question && !what_question) return {};
+        lowered[1] == "is";
+    const bool count_command = lowered[0] == "count";
+    if (!how_question && !what_question && !count_command) return {};
 
     std::size_t metric_index = lowered.size();
-    for (std::size_t index = how_question ? 2 : 2;
-         index < lowered.size() && index < 6; ++index) {
-        auto metric = lowered[index];
-        if (metric == "word") metric = "words";
-        if (metric == "line") metric = "lines";
-        if (metric == "character") metric = "characters";
-        if (metric == "byte") metric = "bytes";
+    for (std::size_t index = count_command ? 1 : 2;
+         index < lowered.size() && index < 7; ++index) {
+        const auto metric = plural_metric(lowered[index]);
         if (is_count_metric(metric)) {
             metric_index = index;
             lowered[index] = metric;
@@ -82,27 +87,33 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens) const {
 ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens,
                                 const GrammarConfig& config) const {
     ParseMatch match;
-    match.tokens = normalize_count_question(tokens);
-    if (match.tokens.empty()) match.tokens = tokens;
+    auto prepared = tokens;
+    if (!prepared.empty() &&
+        (lower(prepared.front()) == "how" || lower(prepared.front()) == "what")) {
+        for (std::size_t index = 1; index < prepared.size() && index < 5; ++index) {
+            prepared[index] = config.canonical_term(prepared[index]);
+        }
+    }
+
+    match.tokens = normalize_count_instruction(prepared);
+    if (match.tokens.empty()) match.tokens = std::move(prepared);
 
     if (match.tokens.empty()) {
         match.error = "The instruction is empty.";
         return match;
     }
 
-    // Apply spelling corrections only to grammar vocabulary positions. Entity
-    // names and file/folder paths are left untouched.
+    // Correct only command vocabulary, entity types, and count metrics.
+    // User-supplied names and paths remain exactly as entered.
     for (std::size_t index = 0; index < match.tokens.size(); ++index) {
-        const auto word = lower(match.tokens[index]);
-        const auto canonical = config.canonical_term(word);
+        const auto canonical = config.canonical_term(match.tokens[index]);
         if (index == 0 || config.entities.contains(canonical) ||
             is_count_metric(canonical)) {
             match.tokens[index] = canonical;
         }
     }
 
-    const auto original_action = lower(match.tokens.front());
-    const auto action = config.canonical_term(original_action);
+    const auto action = config.canonical_term(match.tokens.front());
     if (!config.actions.contains(action)) {
         match.error = "I do not recognize that command yet.";
         return match;
@@ -111,7 +122,7 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& tokens,
     match.tokens.front() = action;
 
     for (std::size_t index = 1; index < match.tokens.size(); ++index) {
-        const auto canonical = config.canonical_term(lower(match.tokens[index]));
+        const auto canonical = config.canonical_term(match.tokens[index]);
         if (config.entities.contains(canonical)) {
             match.entity_type = canonical;
             match.tokens[index] = canonical;
