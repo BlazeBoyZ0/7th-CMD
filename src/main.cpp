@@ -172,6 +172,17 @@ int main(int argc, char* argv[]) {
 
         auto outcome = orchestrator.execute(
             "command", {{"raw_input", input}});
+        const auto cancel_task = [&orchestrator](seventh::TaskOutcome& task,
+                                                const std::string& message) {
+            if (!orchestrator.cancel(task.task_id)) {
+                task.state = orchestrator.state_of(task.task_id);
+                task.result.error = "The task could not be cancelled.";
+                return false;
+            }
+            task.state = orchestrator.state_of(task.task_id);
+            task.result.error = message;
+            return true;
+        };
         bool exit_requested = false;
         while (true) {
             if (outcome.result.status == seventh::SubsystemStatus::NeedsInformation) {
@@ -189,16 +200,14 @@ int main(int argc, char* argv[]) {
                     const auto answer = input_handler.read_line();
                     if (answer.empty() || answer == "cancel" || answer == "CANCEL" ||
                         answer == "Cancel") {
-                        orchestrator.cancel(outcome.task_id);
-                        outcome.state = orchestrator.state_of(outcome.task_id);
-                        outcome.result.error = "The task was cancelled while waiting for clarification.";
+                        cancel_task(outcome,
+                            "The task was cancelled while waiting for clarification.");
                         cancelled = true;
                         break;
                     }
                     if (answer == "exit" || answer == "EXIT" || answer == "Exit") {
-                        orchestrator.cancel(outcome.task_id);
-                        outcome.state = orchestrator.state_of(outcome.task_id);
-                        outcome.result.error = "The task was cancelled while waiting for clarification.";
+                        cancel_task(outcome,
+                            "The task was cancelled while waiting for clarification.");
                         cancelled = true;
                         exit_requested = true;
                         break;
@@ -222,9 +231,7 @@ int main(int argc, char* argv[]) {
                 const auto confirmation = input_handler.read_line();
                 if (confirmation != "yes" && confirmation != "YES" &&
                     confirmation != "Yes") {
-                    orchestrator.cancel(outcome.task_id);
-                    outcome.state = orchestrator.state_of(outcome.task_id);
-                    outcome.result.error = "Deletion cancelled.";
+                    cancel_task(outcome, "Deletion cancelled.");
                     break;
                 }
                 outcome = orchestrator.continue_task(outcome.task_id, true);
