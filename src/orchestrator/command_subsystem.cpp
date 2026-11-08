@@ -1241,12 +1241,7 @@ SubsystemResult CommandSubsystem::delete_target(
     result.result_data["name"] = std::filesystem::path(path).filename().string();
     result.result_data["path"] = path;
     result.result_data["verified"] = "true";
-    std::string record_ids;
-    for (const auto& id : execution_record_ids) {
-        if (!record_ids.empty()) record_ids += '\\n';
-        record_ids += id;
-    }
-    result.result_data["execution_record_ids"] = std::move(record_ids);
+    result.result_data["execution_record_ids"] = joined_execution_record_ids();
     return result;
 }
 
@@ -1594,6 +1589,14 @@ SubsystemResult CommandSubsystem::create_folder_chain(
 
     std::size_t completed = 0;
     std::vector<std::string> execution_record_ids;
+    const auto joined_execution_record_ids = [&execution_record_ids]() {
+        std::string joined;
+        for (const auto& id : execution_record_ids) {
+            if (!joined.empty()) joined += '\\n';
+            joined += id;
+        }
+        return joined;
+    };
     for (std::size_t index = 0; index < plan.tasks.size(); ++index) {
         auto& task = plan.tasks[index];
         if (!plan_state_manager_.start(plan, task.id)) {
@@ -1618,8 +1621,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
-            result.result_data["execution_record_ids"] = execution_record_ids.empty()
-                ? std::string{} : execution_record_ids.front();
+            result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
 
@@ -1648,6 +1650,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             if (!marked_failed) result.error += " The plan state could not be marked failed.";
             result.result_data["completed_steps"] = std::to_string(completed);
             result.result_data["total_steps"] = std::to_string(clauses.size());
+            result.result_data["execution_record_ids"] = joined_execution_record_ids();
             return result;
         }
         if (!plan_state_manager_.complete(plan, task.id)) {
