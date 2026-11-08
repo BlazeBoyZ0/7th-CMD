@@ -58,7 +58,7 @@ public:
                  std::string& error) override {
         auto text = platform_.filesystem().read_text(request.source_path, error);
         if (!text) return false;
-        if (text->find('\\0') != std::string::npos) {
+        if (text->find('\0') != std::string::npos) {
             error = "The document provider refuses binary file content.";
             return false;
         }
