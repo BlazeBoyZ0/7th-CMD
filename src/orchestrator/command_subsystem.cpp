@@ -1839,9 +1839,86 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
         result.missing_information.emplace_back("instruction text");
         return result;
     }
+
+    const auto normalized = lower(raw->second);
+    const bool inspect_latest = normalized == "show last task";
+    constexpr std::string_view inspect_prefix{"inspect task "};
+    if (inspect_latest || normalized.rfind(inspect_prefix, 0) == 0 ||
+        normalized == "inspect task") {
+        std::optional<execution::ExecutionRecord> record;
+        if (inspect_latest) {
+            record = execution_engine_.latest_record();
+        } else if (normalized.size() > inspect_prefix.size()) {
+            const auto task_id = raw->second.substr(inspect_prefix.size());
+            const auto first = task_id.find_first_not_of(" \t");
+            const auto last = task_id.find_last_not_of(" \t");
+            if (first != std::string::npos) {
+                record = execution_engine_.record_of(task_id.substr(first, last - first + 1));
+            }
+        }
+        if (!record) {
+            return failure(request.request_id, inspect_latest
+                ? "There is no execution record in this session yet."
+                : "That execution record was not found. Check the task ID; records are session-only.");
+        }
+
+        const auto status_name = [](execution::ExecutionStatus status) {
+            switch (status) {
+            case execution::ExecutionStatus::Success: return "Success";
+            case execution::ExecutionStatus::NeedsPermission: return "Blocked";
+            case execution::ExecutionStatus::Unsupported: return "Unsupported";
+            case execution::ExecutionStatus::Failure: return "Failure";
+            }
+            return "Unknown";
+        };
+        const auto outcome_name = [](execution::StepOutcome outcome) {
+            switch (outcome) {
+            case execution::StepOutcome::Attempted: return "Attempted";
+            case execution::StepOutcome::Succeeded: return "Succeeded";
+            case execution::StepOutcome::Blocked: return "Blocked";
+            case execution::StepOutcome::Failed: return "Failed";
+            }
+            return "Unknown";
+        };
+        const auto verification_name = [](execution::VerificationOutcome outcome) {
+            switch (outcome) {
+            case execution::VerificationOutcome::NotRun: return "Not performed";
+            case execution::VerificationOutcome::Passed: return "Passed";
+            case execution::VerificationOutcome::Failed: return "Failed";
+            }
+            return "Unknown";
+        };
+
+        SubsystemResult result;
+        result.request_id = request.request_id;
+        result.status = SubsystemStatus::Success;
+        result.result_data["inspection"] = "true";
+        result.result_data["record_task_id"] = record->task_id;
+        result.result_data["record_status"] = status_name(record->status);
+        result.result_data["cir_id"] = record->cir_id.empty() ? "Not available" : record->cir_id;
+        result.result_data["plan_id"] = record->plan_id.empty() ? "Not available" : record->plan_id;
+        result.result_data["step_count"] = std::to_string(record->steps.size());
+
+        for (std::size_t index = 0; index < record->steps.size(); ++index) {
+            const auto& step = record->steps[index];
+            const auto prefix = "step_" + std::to_string(index + 1) + "_";
+            result.result_data[prefix + "operation"] = step.operation;
+            result.result_data[prefix + "outcome"] = outcome_name(step.outcome);
+            result.result_data[prefix + "verification"] = verification_name(step.verification);
+            if (!step.error.empty()) result.result_data[prefix + "error"] = step.error;
+            for (const auto* key : {"path", "destination", "count", "directory",
+                                    "query", "bytes", "displayed", "truncated", "name"}) {
+                const auto value = step.output_data.find(key);
+                if (value != step.output_data.end() && !value->second.empty()) {
+                    result.result_data[prefix + key] = value->second;
+                }
+            }
+        }
+        return result;
+    }
+
     const auto clauses = split_instruction_chain(raw->second);
     if (clauses.size() > 1) return create_folder_chain(request, clauses);
     return handle_single(request, raw->second);
 }
-
 } // namespace seventh
