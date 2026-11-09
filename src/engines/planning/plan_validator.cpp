@@ -3,7 +3,6 @@
 #include "seventh/engines/planning/dependency_analyzer.hpp"
 
 #include <cctype>
-#include <set>
 #include <string>
 
 namespace seventh::planning {
@@ -37,12 +36,8 @@ StringList PlanValidator::validate(const Plan& plan) const {
         }
     }
 
-    std::set<std::string> ids;
     for (const auto& task : plan.tasks) {
         if (is_blank(task.id)) errors.emplace_back("A task has no identifier.");
-        if (!ids.insert(task.id).second) {
-            errors.emplace_back("Duplicate task identifier: " + task.id);
-        }
         if (is_blank(task.operation)) {
             errors.emplace_back("Task " + task.id + " has no operation.");
         }
@@ -63,7 +58,7 @@ StringList PlanValidator::validate(const Plan& plan) const {
 
     const auto dependencies = DependencyAnalyzer{}.analyze(plan);
     if (dependencies.has_duplicate_task_ids) {
-        // Already reported above; this flag also prevents ambiguous graph analysis.
+        errors.emplace_back("Duplicate task identifier found in the plan.");
     }
     for (const auto& missing : dependencies.missing_dependencies) {
         errors.emplace_back("Missing dependency: " + missing);
