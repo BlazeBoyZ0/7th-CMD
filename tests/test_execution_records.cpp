@@ -172,7 +172,7 @@ int main() {
           "multi-step failure records preserve plan ID and failed step position");
 
     const auto latest_before_bound = engine.latest_record();
-    check(latest_before_bound && latest_before_bound->task_id == "preflight-block",
+    check(latest_before_bound && latest_before_bound->task_id == "planned-chain-failure",
           "latest_record returns the most recently retained execution");
     check(!engine.record_of("missing-task").has_value(),
           "unknown task identifiers do not produce execution records");
