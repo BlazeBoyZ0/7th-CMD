@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <string_view>
+#include <set>
 
 namespace seventh::grammar {
 namespace {
@@ -12,8 +13,17 @@ bool contains_any(const std::string& punctuation, std::string_view values) {
         [&](char value) { return values.find(value) != std::string_view::npos; });
 }
 
-bool is_article(const std::string& token) {
-    return token == "a" || token == "an" || token == "the" || token == "new";
+bool is_polite_word(const std::string& token) {
+    static const std::set<std::string> words{
+        "hey", "hi", "hello", "please", "kindly", "dude",
+        "okay", "ok", "thanks", "thank", "you"
+    };
+    return words.contains(token);
+}
+
+bool is_polite_clause(const std::vector<std::string>& clause) {
+    return !clause.empty() &&
+        std::all_of(clause.begin(), clause.end(), is_polite_word);
 }
 
 bool is_name_phrase(const std::vector<std::string>& clause) {
@@ -84,12 +94,26 @@ std::vector<std::string> PhraseComposer::compose(
     }
 
     auto clauses = split_clauses(detailed, corrected_tokens);
-    if (clauses.size() < 2 || clauses.front().empty()) return corrected_tokens;
+    if (clauses.empty()) return corrected_tokens;
 
-    auto& primary = clauses.front();
-    const auto operation = config.canonical_term(primary.front());
-    if (operation != "create") return corrected_tokens;
+    // Ignore only a small, explicit set of conversational courtesy words.
+    // Unknown leading text is never silently discarded.
+    std::size_t primary_index = clauses.size();
+    for (std::size_t i = 0; i < clauses.size(); ++i) {
+        auto& clause = clauses[i];
+        while (!clause.empty() && is_polite_word(clause.front())) {
+            clause.erase(clause.begin());
+        }
+        if (clause.empty()) continue;
+        if (config.canonical_term(clause.front()) == "create") {
+            primary_index = i;
+            break;
+        }
+        if (!is_polite_clause(clause)) return corrected_tokens;
+    }
+    if (primary_index == clauses.size()) return corrected_tokens;
 
+    auto& primary = clauses[primary_index];
     bool has_folder_entity = false;
     for (const auto& token : primary) {
         if (config.canonical_term(token) == "folder") {
@@ -110,9 +134,10 @@ std::vector<std::string> PhraseComposer::compose(
         }
     }
 
-    for (std::size_t clause_index = 1; clause_index < clauses.size(); ++clause_index) {
+    for (std::size_t clause_index = primary_index + 1;
+         clause_index < clauses.size(); ++clause_index) {
         const auto& clause = clauses[clause_index];
-        if (clause.empty()) continue;
+        if (clause.empty() || is_polite_clause(clause)) continue;
 
         if (!has_name && is_name_phrase(clause)) {
             result.push_back("named");
@@ -125,14 +150,14 @@ std::vector<std::string> PhraseComposer::compose(
             std::size_t position = 1;
             if (clause[position] == "it" || clause[position] == "that" ||
                 clause[position] == "this") ++position;
-            const auto marker = clause[position] == "to" ? "on" : clause[position];
+            const std::string marker =
+                clause[position] == "to" ? "on" : clause[position];
             result.push_back(marker);
             result.insert(result.end(), clause.begin() +
                 static_cast<std::ptrdiff_t>(position + 1), clause.end());
             has_destination = true;
         }
     }
-
     return result;
 }
 
