@@ -135,13 +135,13 @@ void test_grammar_input_metadata() {
 
     const Normalizer normalizer;
     const auto normalized = normalizer.normalize(
-        "  Create\\t a folder named \\"My  Games\\"\\r\\n on Desktop...  ");
-    expect(normalized == "Create a folder named \\"My  Games\\" on Desktop...",
+        "  Create\t a folder named \"My  Games\"\r\n on Desktop...  ");
+    expect(normalized == "Create a folder named \"My  Games\" on Desktop...",
            "normalization collapses external whitespace but preserves quoted values");
 
     const InputProcessor processor;
     const auto tokens = processor.process_detailed(
-        "Create a folder named \\"My  Games\\" on Desktop...");
+        "Create a folder named \"My  Games\" on Desktop...");
     expect(tokens.size() == 7,
            "detailed tokenization keeps quoted multi-word values as one token");
     if (tokens.size() == 7) {
