@@ -3,6 +3,8 @@
 #include "seventh/engines/execution/execution_tracker.hpp"
 #include <map>
 #include <optional>
+#include <string>
+#include <vector>
 namespace seventh::execution {
 class ExecutionEngine {
 public:
@@ -10,10 +12,14 @@ public:
  [[nodiscard]] ExecutionResult execute(const ExecutionRequest& request);
  [[nodiscard]] ExecutionState state_of(const std::string& task_id) const;
  [[nodiscard]] std::optional<ExecutionRecord> record_of(const std::string& task_id) const;
+ [[nodiscard]] std::optional<ExecutionRecord> latest_record() const;
  [[nodiscard]] bool set_verification(const std::string& task_id, VerificationOutcome outcome);
 private:
+ void retain_record(ExecutionRecord record);
+ static constexpr std::size_t max_records_{100};
  ActionDispatcher dispatcher_;
  ExecutionTracker tracker_;
  std::map<std::string,ExecutionRecord> records_;
+ std::vector<std::string> record_order_;
 };
 }
