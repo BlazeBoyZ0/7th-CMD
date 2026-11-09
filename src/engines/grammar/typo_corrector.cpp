@@ -75,9 +75,9 @@ CorrectionResult TypoCorrector::correct(
     }
 
     const auto word = lowercase_ascii(token.text);
-    const auto explicit = explicit_corrections.find(word);
-    if (explicit != explicit_corrections.end()) {
-        const auto target = lowercase_ascii(explicit->second);
+    const auto explicit_entry = explicit_corrections.find(word);
+    if (explicit_entry != explicit_corrections.end()) {
+        const auto target = lowercase_ascii(explicit_entry->second);
         if (vocabulary.contains(target)) {
             result.value = target;
             result.changed = result.value != word;
