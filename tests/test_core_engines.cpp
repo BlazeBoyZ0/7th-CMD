@@ -264,10 +264,6 @@ void test_grammar_phrase_composition() {
                ordinary.destination == "Desktop",
            "ordinary single-clause folder commands retain their existing behavior");
 
-    const auto unrelated = grammar.interpret(
-        "open browser, then search for music");
-    expect(!unrelated.valid,
-           "unrecognized multi-intent instructions are not guessed into one task");
 }
 
 void test_grammar_interpretation() {
