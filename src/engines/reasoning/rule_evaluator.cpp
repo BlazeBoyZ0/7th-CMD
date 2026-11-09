@@ -153,10 +153,11 @@ RuleEvaluation RuleEvaluator::evaluate(const std::vector<Rule>& rules,
             conclusion.observed_at =
                 std::max(conclusion.observed_at, latest_observation);
 
-            if (conclusion.source.empty()) {
-                conclusion.source = rule.id.empty() ? "rule:anonymous"
-                                                    : "rule:" + rule.id;
-            }
+            // A derived fact must identify the rule that produced it.
+            // The conclusion template's source describes its declaration,
+            // not the evidence provenance of this derived instance.
+            conclusion.source = rule.id.empty() ? "rule:anonymous"
+                                                : "rule:" + rule.id;
 
             const auto duplicate = std::find_if(
                 known.begin(), known.end(),
