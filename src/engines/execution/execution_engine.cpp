@@ -44,7 +44,7 @@ ExecutionResult ExecutionEngine::execute(const ExecutionRequest& request) {
         step.error = result.error;
         record.status = result.status;
         record.steps.push_back(std::move(step));
-        records_.emplace(request.task_id, std::move(record));
+        retain_record(std::move(record));
         return result;
     }
 
@@ -80,12 +80,27 @@ ExecutionResult ExecutionEngine::execute(const ExecutionRequest& request) {
     step.error = result.error;
     record.status = result.status;
     record.steps.push_back(std::move(step));
-    records_.emplace(request.task_id, std::move(record));
+    retain_record(std::move(record));
     return result;
+}
+
+void ExecutionEngine::retain_record(ExecutionRecord record) {
+    const auto task_id = record.task_id;
+    records_.insert_or_assign(task_id, std::move(record));
+    record_order_.push_back(task_id);
+    while (record_order_.size() > max_records_) {
+        records_.erase(record_order_.front());
+        record_order_.erase(record_order_.begin());
+    }
 }
 
 ExecutionState ExecutionEngine::state_of(const std::string& task_id) const {
     return tracker_.state_of(task_id);
+}
+
+std::optional<ExecutionRecord> ExecutionEngine::latest_record() const {
+    if (record_order_.empty()) return std::nullopt;
+    return record_of(record_order_.back());
 }
 
 std::optional<ExecutionRecord> ExecutionEngine::record_of(
