@@ -3,6 +3,7 @@
 #include "seventh/engines/grammar/cir_generator.hpp"
 #include "seventh/engines/grammar/grammar_parser.hpp"
 #include "seventh/engines/grammar/semantic_analyzer.hpp"
+#include "seventh/engines/grammar/phrase_composer.hpp"
 #include "seventh/engines/grammar/typo_corrector.hpp"
 
 #include <set>
@@ -62,7 +63,8 @@ CanonicalIntent GrammarEngine::interpret(const std::string& input) const {
         }
     }
 
-    const auto match = GrammarParser{}.parse(tokens, config_);
+    const auto composed = PhraseComposer{}.compose(detailed, tokens, config_);
+    const auto match = GrammarParser{}.parse(composed, config_);
     auto ast = SemanticAnalyzer{}.analyze(AstGenerator{}.generate(match));
     return CirGenerator{}.generate(ast, input);
 }
