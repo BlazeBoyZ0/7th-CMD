@@ -14,6 +14,7 @@ add_executable(7thcmd_tests
     ../src/engines/grammar/normalizer.cpp
     ../src/engines/grammar/semantic_analyzer.cpp
     ../src/engines/grammar/tokenizer.cpp
+    ../src/engines/grammar/typo_corrector.cpp
     ../src/engines/reasoning/truth_evaluator.cpp
     ../src/engines/reasoning/rule_evaluator.cpp
     ../src/engines/planning/dependency_analyzer.cpp
