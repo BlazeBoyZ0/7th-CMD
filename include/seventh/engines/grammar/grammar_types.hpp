@@ -16,10 +16,20 @@ struct ParseMatch {
     std::map<std::string, SlotValue> slots;
     bool recognized{false}, complete{false}, ambiguous{false};
 };
+struct EntityRelationship {
+    std::string subject;
+    std::string predicate;
+    std::string object;
+    std::string subject_type;
+    std::string object_type;
+    bool object_is_pronoun{false};
+};
+
 struct AstNode {
     std::string operation, entity_type, pattern_id, error;
     std::vector<std::string> tokens, missing_slots;
     std::map<std::string, SlotValue> slots;
+    std::vector<EntityRelationship> relationships;
     bool valid{false};
 };
 struct CanonicalIntent {
