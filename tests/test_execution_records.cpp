@@ -12,7 +12,14 @@ public:
         const seventh::execution::ExecutionRequest& request) override {
         seventh::execution::ExecutionResult result;
         result.status = seventh::execution::ExecutionStatus::Success;
-        result.output_data["path"] = request.input_data.at("path");
+        if (request.operation == "search_files") {
+            result.output_data["count"] = "3";
+            result.output_data["displayed"] = "3";
+            result.output_data["truncated"] = "false";
+            result.output_data["matches"] = "alpha.txt | /tmp/search/alpha.txt";
+        } else {
+            result.output_data["path"] = request.input_data.at("path");
+        }
         return result;
     }
 };
@@ -87,6 +94,27 @@ int main() {
               passed_verification->status == ExecutionStatus::Success &&
               passed_verification->steps[0].verification == VerificationOutcome::Passed,
           "successful verification preserves the successful execution status");
+
+    ExecutionRequest search_request;
+    search_request.task_id = "record-search-1";
+    search_request.operation = "search_files";
+    search_request.input_data["path"] = "/tmp/search";
+    search_request.input_data["query"] = "alpha";
+    search_request.cir_id = "search-cir-1";
+    search_request.plan_id = "search-plan-1";
+    search_request.plan_step_id = "search-step-1";
+    const auto search_result = engine.execute(search_request);
+    const auto search_record = engine.record_of(search_request.task_id);
+    check(search_result.status == ExecutionStatus::Success && search_record,
+          "search operation is executed and receives an execution record");
+    if (search_record) {
+        check(search_record->cir_id == "search-cir-1" &&
+                  search_record->plan_id == "search-plan-1" &&
+                  search_record->steps[0].operation == "search_files",
+              "search record retains CIR, plan, and operation traceability");
+        check(search_record->steps[0].output_data.at("count") == "3",
+              "search record stores the actual search result summary");
+    }
 
     ExecutionRequest verification_failure;
     verification_failure.task_id = "record-task-3";
