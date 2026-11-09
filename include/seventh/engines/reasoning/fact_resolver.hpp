@@ -9,6 +9,8 @@ namespace seventh::reasoning {
 struct FactResolution {
     TruthValue truth{TruthValue::Unknown};
     std::vector<Fact> matches;
+    std::vector<Fact> supporting;
+    std::vector<Fact> opposing;
     bool contradiction{false};
 };
 

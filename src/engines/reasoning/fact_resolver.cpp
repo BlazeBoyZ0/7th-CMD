@@ -5,8 +5,6 @@ namespace seventh::reasoning {
 FactResolution FactResolver::resolve(const FactQuery& query,
                                       const std::vector<Fact>& facts) const {
     FactResolution result;
-    bool saw_match = false;
-    bool saw_non_match = false;
 
     for (const auto& fact : facts) {
         if (!fact.fresh || fact.subject != query.subject ||
@@ -14,25 +12,27 @@ FactResolution FactResolver::resolve(const FactQuery& query,
             continue;
         }
 
-        // Preserve all relevant evidence, including facts that disprove the
-        // requested value. The caller can then inspect conflicts as well.
         result.matches.push_back(fact);
 
-        if (!query.match_value || fact.value == query.value) {
-            saw_match = true;
+        const bool supports = !query.match_value || fact.value == query.value;
+        if (supports) {
+            result.supporting.push_back(fact);
         } else {
-            saw_non_match = true;
+            result.opposing.push_back(fact);
         }
     }
 
-    result.contradiction = saw_match && saw_non_match;
+    result.contradiction = !result.supporting.empty() &&
+                           !result.opposing.empty();
+
     if (result.contradiction) {
         result.truth = TruthValue::Unknown;
-    } else if (saw_match) {
+    } else if (!result.supporting.empty()) {
         result.truth = TruthValue::True;
-    } else if (saw_non_match) {
+    } else if (!result.opposing.empty()) {
         result.truth = TruthValue::False;
     }
+
     return result;
 }
 

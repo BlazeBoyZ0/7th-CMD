@@ -61,6 +61,26 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 add_test(NAME 7thcmd_execution_records COMMAND 7thcmd_execution_record_tests)
 
+add_executable(7thcmd_reasoning_tests
+    test_reasoning_engine.cpp
+    ../src/engines/reasoning/bounded_search.cpp
+    ../src/engines/reasoning/confidence_evaluator.cpp
+    ../src/engines/reasoning/contradiction_handler.cpp
+    ../src/engines/reasoning/fact_resolver.cpp
+    ../src/engines/reasoning/reasoning_engine.cpp
+    ../src/engines/reasoning/rule_evaluator.cpp
+    ../src/engines/reasoning/rule_loader.cpp
+    ../src/engines/reasoning/truth_evaluator.cpp
+    ../src/engines/reasoning/uncertainty_handler.cpp
+    ../src/utilities/json_loader.cpp
+)
+target_include_directories(7thcmd_reasoning_tests PRIVATE ../include)
+target_compile_features(7thcmd_reasoning_tests PRIVATE cxx_std_20)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(7thcmd_reasoning_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME 7thcmd_reasoning_engine COMMAND 7thcmd_reasoning_tests)
+
 add_test(
     NAME 7thcmd_rename_clarification
     COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/test_rename_clarification.sh $<TARGET_FILE:7thcmd>
