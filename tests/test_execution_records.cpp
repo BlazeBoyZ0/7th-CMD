@@ -130,6 +130,21 @@ int main() {
               failed_verification->steps[0].verification == VerificationOutcome::Failed,
           "failed verification is reflected in the final execution record");
 
+    check(engine.record_terminal_failure(
+              "preflight-failure", "create", "Target already exists.", "cir-preflight"),
+          "a pre-execution command failure can be retained");
+    const auto preflight_failure = engine.record_of("preflight-failure");
+    check(preflight_failure &&
+              preflight_failure->status == ExecutionStatus::Failure &&
+              preflight_failure->cir_id == "cir-preflight" &&
+              preflight_failure->steps.size() == 1 &&
+              preflight_failure->steps[0].outcome == StepOutcome::Failed &&
+              preflight_failure->steps[0].error == "Target already exists.",
+          "pre-execution failure records preserve task, CIR, outcome, and reason");
+    check(!engine.record_terminal_failure(
+              "preflight-failure", "create", "Overwrite attempt.", "cir-other"),
+          "a later preflight failure cannot overwrite an existing record");
+
     const auto latest_before_bound = engine.latest_record();
     check(latest_before_bound && latest_before_bound->task_id == "record-task-3",
           "latest_record returns the most recently retained execution");

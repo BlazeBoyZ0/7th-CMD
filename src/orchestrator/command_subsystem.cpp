@@ -31,6 +31,14 @@ std::string lower(std::string value) {
     return value;
 }
 
+std::string entity_key(std::string value) {
+    const auto first = value.find_first_not_of(" \\t\\r\\n");
+    if (first == std::string::npos) return {};
+    const auto last = value.find_last_not_of(" \\t\\r\\n.,;:");
+    if (last == std::string::npos || last < first) return {};
+    return lower(value.substr(first, last - first + 1));
+}
+
 SubsystemResult failure(const RequestId& id, std::string message) {
     SubsystemResult result;
     result.request_id = id;
@@ -1529,7 +1537,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
                 return failure(request.request_id, "Every folder-creation step needs a destination.");
             }
 
-            const auto destination_name = lower(intent.destination);
+            const auto destination_name = entity_key(intent.destination);
             std::string destination;
             bool planned_destination = false;
             if (destination_name == "it" || destination_name == "that" ||
@@ -1554,8 +1562,23 @@ SubsystemResult CommandSubsystem::create_folder_chain(
                     "A folder destination does not exist or could not be resolved.");
             }
             target = (std::filesystem::path(destination) / folder_name).lexically_normal().string();
-            if (platform_.filesystem().exists(target)) {
-                return failure(request.request_id, "A target folder with that name already exists.");
+
+            reasoning::Fact existence_fact;
+            existence_fact.subject = target;
+            existence_fact.property = "exists";
+            existence_fact.value = platform_.filesystem().exists(target) ? "true" : "false";
+            existence_fact.source = "linux.filesystem";
+            existence_fact.confidence = 100;
+            existence_fact.fresh = true;
+            reasoning::ReasoningRequest reasoning_request;
+            reasoning_request.query = {target, "exists", "false", true};
+            reasoning_request.facts.push_back(std::move(existence_fact));
+            const auto reasoning_result = reasoning_engine_.evaluate(reasoning_request);
+            if (reasoning_result.truth != TruthValue::True) {
+                return failure(request.request_id,
+                    reasoning_result.truth == TruthValue::False
+                        ? "A target folder with that name already exists."
+                        : "The system could not determine whether the target already exists.");
             }
 
             permissions::PermissionRequest permission;
@@ -1573,9 +1596,9 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             draft.operation = "create_directory";
             draft.input_data["path"] = target;
             display_name = intent.name;
-            local_paths[lower(intent.name)] = target;
+            local_paths[entity_key(intent.name)] = target;
         } else if (intent.operation == "rename") {
-            const auto source_name = lower(intent.source);
+            const auto source_name = entity_key(intent.source);
             std::string source;
             if (source_name == "it" || source_name == "that" ||
                 source_name == "that folder" || source_name == "previous folder") {
@@ -1620,7 +1643,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             draft.input_data["source"] = source;
             draft.input_data["destination"] = target;
             display_name = intent.destination;
-            local_paths[lower(intent.destination)] = target;
+            local_paths[entity_key(intent.destination)] = target;
         } else {
             return failure(request.request_id,
                 "Multi-step v0.1 supports folder creation and renaming folders created earlier in the sequence.");
@@ -1919,7 +1942,19 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
     }
 
     const auto clauses = split_instruction_chain(raw->second);
-    if (clauses.size() > 1) return create_folder_chain(request, clauses);
-    return handle_single(request, raw->second);
+    auto result = clauses.size() > 1
+        ? create_folder_chain(request, clauses)
+        : handle_single(request, raw->second);
+
+    if (result.status == SubsystemStatus::Failure ||
+        result.status == SubsystemStatus::NeedsPermission) {
+        const auto intent = grammar_engine_.interpret(raw->second);
+        const auto operation = intent.operation.empty() ? "command" : intent.operation;
+        (void)execution_engine_.record_terminal_failure(
+            request.task_id, operation,
+            result.error.empty() ? "The command was blocked before execution." : result.error,
+            intent.id);
+    }
+    return result;
 }
 } // namespace seventh

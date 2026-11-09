@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "corrections": [
-    {"from": "creat", "to": "create"},
-    {"from": "foler", "to": "folder"},
-    {"from": "lnes", "to": "lines"},
-    {"from": "muxh", "to": "much"}
-  ]
-}

@@ -84,6 +84,29 @@ ExecutionResult ExecutionEngine::execute(const ExecutionRequest& request) {
     return result;
 }
 
+bool ExecutionEngine::record_terminal_failure(
+    const std::string& task_id, const std::string& operation,
+    const std::string& error, const std::string& cir_id) {
+    if (task_id.empty() || records_.contains(task_id)) return false;
+
+    ExecutionRecord record;
+    record.record_id = task_id;
+    record.task_id = task_id;
+    record.cir_id = cir_id;
+    record.status = ExecutionStatus::Failure;
+
+    ExecutionStepRecord step;
+    step.step_id = task_id;
+    step.operation = operation.empty() ? "command" : operation;
+    step.outcome = StepOutcome::Failed;
+    step.error = error;
+    record.steps.push_back(std::move(step));
+
+    if (tracker_.begin(task_id)) (void)tracker_.fail(task_id);
+    retain_record(std::move(record));
+    return true;
+}
+
 void ExecutionEngine::retain_record(ExecutionRecord record) {
     const auto task_id = record.task_id;
     records_.insert_or_assign(task_id, std::move(record));
