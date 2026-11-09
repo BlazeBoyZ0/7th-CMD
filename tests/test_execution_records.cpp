@@ -203,6 +203,21 @@ int main() {
               engine.state_of("aggregate-original-task") == ExecutionState::Completed,
           "aggregate record preserves both verified steps and completed task state");
 
+    const std::vector<std::string> incomplete_aggregate_ids{
+        "aggregate-step-1", "missing-aggregate-step"};
+    check(!engine.record_aggregate("aggregate-missing-child", incomplete_aggregate_ids,
+                                   "aggregate-cir-1", "aggregate-plan"),
+          "an aggregate is rejected when any requested child record is missing");
+    check(!engine.record_of("aggregate-missing-child").has_value(),
+          "a missing child cannot leave behind a misleading partial aggregate");
+    const std::vector<std::string> duplicate_aggregate_ids{
+        "aggregate-step-1", "aggregate-step-1"};
+    check(!engine.record_aggregate("aggregate-duplicate-child", duplicate_aggregate_ids,
+                                   "aggregate-cir-1", "aggregate-plan"),
+          "an aggregate rejects duplicate child record identifiers");
+    check(!engine.record_of("aggregate-duplicate-child").has_value(),
+          "duplicate child references cannot inflate aggregate step history");
+
     const auto latest_before_bound = engine.latest_record();
     check(latest_before_bound && latest_before_bound->task_id == "aggregate-original-task",
           "latest_record returns the most recently retained execution");
