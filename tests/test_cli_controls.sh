@@ -17,7 +17,9 @@ grep -q "show last task" <<<"$output"
 grep -q "Execution history: session-only, latest 100 records" <<<"$output"
 grep -q "Type --help at the prompt" <<<"$output"
 
-version_count="$(grep -c '^7th cmd 0.1.0$' <<<"$output" || true)"
+# When stdin is piped, the prompt is not echoed separately, so it can share
+# a line with the version text. Match the text anywhere on each output line.
+version_count="$(grep -c '7th cmd 0.1.0' <<<"$output" || true)"
 if [[ "$version_count" -ne 2 ]]; then
     echo "expected both --version and --v to print version information" >&2
     exit 1
