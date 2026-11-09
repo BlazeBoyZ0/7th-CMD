@@ -1,5 +1,6 @@
 #include "seventh/engines/execution/execution_engine.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace seventh::execution {
