@@ -6,7 +6,7 @@
 namespace seventh::grammar {
 namespace {
 
-bool is_sentence_punctuation(char value) {
+bool is_clause_punctuation(char value) {
     return value == ',' || value == ';' || value == '!' ||
            value == '?' || value == ':';
 }
@@ -37,9 +37,12 @@ std::vector<Token> Tokenizer::tokenize_detailed(const std::string& input) const 
             continue;
         }
 
-        if (is_sentence_punctuation(input[position]) || input[position] == '.') {
+        if (is_clause_punctuation(input[position]) || input[position] == '.') {
             const char punctuation = input[position];
             pending_punctuation += punctuation;
+            if (!tokens.empty()) {
+                tokens.back().punctuation_after += punctuation;
+            }
             ++position;
 
             // Treat repeated dots and a terminal dot as sentence boundaries,
@@ -53,7 +56,10 @@ std::vector<Token> Tokenizer::tokenize_detailed(const std::string& input) const 
                     continue;
                 }
             }
-            ++sentence_index;
+            if (punctuation == '.' || punctuation == ';' ||
+                punctuation == '!' || punctuation == '?') {
+                ++sentence_index;
+            }
             continue;
         }
 
@@ -84,7 +90,7 @@ std::vector<Token> Tokenizer::tokenize_detailed(const std::string& input) const 
             while (position < input.size()) {
                 const char character = input[position];
                 if (std::isspace(static_cast<unsigned char>(character)) ||
-                    is_sentence_punctuation(character)) {
+                    is_clause_punctuation(character)) {
                     break;
                 }
                 if (character == '.' &&
