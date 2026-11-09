@@ -1618,6 +1618,11 @@ SubsystemResult CommandSubsystem::create_folder_chain(
                 }
             }
 
+            draft.input_data["destination_reference"] = destination_reference;
+            draft.input_data["last_created_path"] = last_created_path;
+            draft.input_data["planned_destination"] = planned_destination ? "true" : "false";
+            draft.input_data["resolved_destination"] = destination;
+
             std::error_code ec;
             if (destination.empty() ||
                 (!planned_destination &&
@@ -1984,7 +1989,9 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
             result.result_data[prefix + "verification"] = verification_name(step.verification);
             if (!step.error.empty()) result.result_data[prefix + "error"] = step.error;
             for (const auto* key : {"path", "destination", "count", "directory",
-                                    "query", "bytes", "displayed", "truncated", "name"}) {
+                                    "query", "bytes", "displayed", "truncated", "name",
+                                    "destination_reference", "last_created_path",
+                                    "planned_destination", "resolved_destination"}) {
                 auto value = step.output_data.find(key);
                 if (value != step.output_data.end() && !value->second.empty()) {
                     result.result_data[prefix + key] = value->second;
