@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <string_view>
 #include <set>
+#include <utility>
 
 namespace seventh::grammar {
 namespace {
