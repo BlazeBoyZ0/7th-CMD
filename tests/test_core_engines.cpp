@@ -271,6 +271,14 @@ void test_grammar_phrase_composition() {
                typo_and_casual.destination == "Desktop",
            "courtesy words, a known entity typo, and follow-up phrases compose safely");
 
+    const auto original_style = grammar.interpret(
+        "hey dude, make new diraectory.. name itt Games.. and place it on Desktop.. okay?");
+    expect(original_style.valid && original_style.operation == "create" &&
+               original_style.entity_type == "folder" &&
+               original_style.name == "Games" &&
+               original_style.destination == "Desktop",
+           "casual multi-clause wording, a directory typo, and a pronoun typo compose correctly");
+
     const auto ordinary = grammar.interpret(
         "create a folder named Existing on Desktop");
     expect(ordinary.valid && ordinary.name == "Existing" &&
