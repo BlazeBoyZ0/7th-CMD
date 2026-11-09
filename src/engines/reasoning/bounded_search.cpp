@@ -1,12 +1,14 @@
 #include "seventh/engines/reasoning/bounded_search.hpp"
 
+#include <algorithm>
+
 namespace seventh::reasoning {
 
 BoundedSearchResult BoundedSearch::collect_relevant(
     const FactQuery& query, const std::vector<Fact>& facts,
     std::size_t max_candidates, std::size_t max_facts_examined) const {
     BoundedSearchResult result;
-    result.candidates.reserve(max_candidates);
+    result.candidates.reserve(std::min(max_candidates, facts.size()));
     result.report.candidate_limit = max_candidates;
     result.report.scan_limit = max_facts_examined;
 
