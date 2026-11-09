@@ -1,5 +1,6 @@
 #include "seventh/engines/grammar/grammar_subsystem.hpp"
 
+#include <cstddef>
 #include <string>
 #include <utility>
 
