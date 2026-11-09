@@ -349,6 +349,14 @@ void test_grammar_phrase_composition() {
 
     const auto original_style = grammar.interpret(
         "hey dude, make new diraectory.. name itt Games.. and place it on Desktop.. okay?");
+
+    const auto polite_prefix = grammar.interpret(
+        "please make new diraectory, name it Notes; put it on Desktop");
+    expect(polite_prefix.valid && polite_prefix.entity_type == "folder" &&
+               polite_prefix.name == "Notes" &&
+               polite_prefix.destination == "Desktop",
+           "please-prefixed commands still correct the following grammar entity");
+
     expect(original_style.valid && original_style.operation == "create" &&
                original_style.entity_type == "folder" &&
                original_style.name == "Games" &&
