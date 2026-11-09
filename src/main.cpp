@@ -23,10 +23,10 @@ int main(int argc, char* argv[]) {
 
     switch (result.action) {
     case seventh::cli::CommandLineAction::ShowHelp:
-        std::cout << "Help is available inside the prompt. Type --help after launch.\\n";
+        std::cout << "Help is available inside the prompt. Type --help after launch.\n";
         break;
     case seventh::cli::CommandLineAction::ShowVersion:
-        std::cout << "Version information is available inside the prompt. Type --version after launch.\\n";
+        std::cout << "Version information is available inside the prompt. Type --version after launch.\n";
         break;
     case seventh::cli::CommandLineAction::Invalid:
         return result.exit_code;
