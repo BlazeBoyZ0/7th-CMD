@@ -330,6 +330,18 @@ void test_grammar_phrase_composition() {
 
     const auto quoted_name = grammar.interpret(
         "make a folder, name it \"My, Games\"; put it on Desktop");
+
+    const auto quoted_keyword_then = grammar.interpret(
+        "make a folder, name it \"then\"; put it on Desktop");
+    expect(quoted_keyword_then.valid && quoted_keyword_then.name == "then" &&
+               quoted_keyword_then.destination == "Desktop",
+           "a quoted value matching the clause keyword 'then' remains user data");
+
+    const auto quoted_keyword_and = grammar.interpret(
+        "make a folder, name it \"and\"; put it on Desktop");
+    expect(quoted_keyword_and.valid && quoted_keyword_and.name == "and" &&
+               quoted_keyword_and.destination == "Desktop",
+           "a quoted value matching the conjunction 'and' remains user data");
     expect(quoted_name.valid && quoted_name.name == "My, Games" &&
                quoted_name.destination == "Desktop",
            "quoted names remain intact while surrounding phrases are composed");
