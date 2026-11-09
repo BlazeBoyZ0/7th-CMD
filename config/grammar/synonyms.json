@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "groups": [
+    {"canonical": "create", "terms": ["make"]},
+    {"canonical": "copy", "terms": ["duplicate"]},
+    {"canonical": "delete", "terms": ["remove"]},
+    {"canonical": "search", "terms": ["find"]},
+    {"canonical": "open", "terms": ["launch", "start"]},
+    {"canonical": "folder", "terms": ["directory"]},
+    {"canonical": "application", "terms": ["app"]}
+  ]
+}

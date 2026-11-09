@@ -141,12 +141,20 @@ int main() {
               preflight_failure->steps[0].outcome == StepOutcome::Failed &&
               preflight_failure->steps[0].error == "Target already exists.",
           "pre-execution failure records preserve task, CIR, outcome, and reason");
+    check(engine.record_terminal_failure(
+              "preflight-block", "delete", "Confirmation required.", "cir-block", true),
+          "a pre-execution permission block can be retained");
+    const auto preflight_block = engine.record_of("preflight-block");
+    check(preflight_block &&
+              preflight_block->status == ExecutionStatus::NeedsPermission &&
+              preflight_block->steps[0].outcome == StepOutcome::Blocked,
+          "pre-execution permission blocks retain a blocked outcome");
     check(!engine.record_terminal_failure(
               "preflight-failure", "create", "Overwrite attempt.", "cir-other"),
           "a later preflight failure cannot overwrite an existing record");
 
     const auto latest_before_bound = engine.latest_record();
-    check(latest_before_bound && latest_before_bound->task_id == "preflight-failure",
+    check(latest_before_bound && latest_before_bound->task_id == "preflight-block",
           "latest_record returns the most recently retained execution");
     check(!engine.record_of("missing-task").has_value(),
           "unknown task identifiers do not produce execution records");

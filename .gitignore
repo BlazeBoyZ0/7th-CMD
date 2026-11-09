@@ -1,0 +1,18 @@
+# Build output
+/build/
+/cmake-build-*/
+/out/
+/bin/
+/obj/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Generated/runtime data
+*.log
+*.tmp
+.cache/

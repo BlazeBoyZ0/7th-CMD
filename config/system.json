@@ -1,0 +1,9 @@
+{
+  "project": "7th cmd",
+  "version": "0.1.0",
+  "language_standard": "C++20",
+  "initial_platform": "linux",
+  "architecture_stage": "scaffold",
+  "network_inference": false,
+  "persistent_live_os_data": false
+}

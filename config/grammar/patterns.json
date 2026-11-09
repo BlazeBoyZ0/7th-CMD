@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "patterns": [
+    {"id":"create_named_entity","operation":"create","entity_type":"folder","target_markers":["named"],"location_markers":["on","in","inside","within"]},
+    {"id":"rename_entity","operation":"rename","entity_type":"file","destination_markers":["to"]},
+    {"id":"move_entity","operation":"move","destination_markers":["to"]},
+    {"id":"copy_entity","operation":"copy","destination_markers":["to"]},
+    {"id":"delete_entity","operation":"delete"},
+    {"id":"search_entity","operation":"search","query_markers":["named","for"],"location_markers":["in","on","inside","within"]},
+    {"id":"open_application","operation":"open","entity_type":"application"}
+  ]
+}

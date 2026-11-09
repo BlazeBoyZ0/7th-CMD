@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "note": "User-managed preferences only. Do not store live operating-system inventory here.",
+  "preferences": {}
+}

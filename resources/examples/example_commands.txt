@@ -1,0 +1,6 @@
+# Planned example commands — examples only; command support is not implemented yet.
+Create a folder named Projects on Desktop
+Rename main.cpp on Desktop to test.cpp
+Open the default browser
+Find the folder named testfolder
+Count the words in notes.txt
