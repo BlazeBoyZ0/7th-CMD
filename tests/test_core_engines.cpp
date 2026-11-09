@@ -191,7 +191,7 @@ void test_grammar_typo_correction() {
     expect(result.changed && result.value == "create" && result.distance == 1,
            "the typo corrector recognizes an adjacent transposition");
 
-    token.text = "direcotry";
+    token.text = "durextory";
     result = corrector.correct(token, vocabulary, explicit_corrections, true);
     expect(result.changed && result.value == "directory" && result.distance == 2,
            "long vocabulary terms allow a bounded two-edit correction");
@@ -247,8 +247,7 @@ void test_grammar_semantic_relationships() {
                located.relationships.front().subject == "Games" &&
                located.relationships.front().predicate == "located_on" &&
                located.relationships.front().object == "Desktop" &&
-               located.relationships.front().subject_type == "folder" &&
-               !located.relationships.front().object_is_pronoun,
+               located.relationships.front().subject_type == "folder" &&               !located.relationships.front().object_is_pronoun,
            "semantic analysis records an explicit folder-to-location relationship");
 
     const auto contained_match = parser.parse(
@@ -497,8 +496,7 @@ void test_grammar_interpretation() {
            "the grammar preserves folder name case and destination");
 
     const auto open = grammar.interpret("open browser");
-    expect(open.valid && open.operation == "open" &&
-               open.entity_type == "application" && open.name == "browser",
+    expect(open.valid && open.operation == "open" &&               open.entity_type == "application" && open.name == "browser",
            "the grammar recognizes the default-browser instruction");
 
     const auto rename = grammar.interpret("rename file main.cpp to test.cpp");
@@ -747,8 +745,7 @@ void test_planning_stable_order_and_dependency_normalization() {
     request.tasks = {child, first, parent, second};
     const auto plan = PlanningEngine{}.create_plan(request);
     expect(plan.valid && plan.tasks.size() == 4,
-           "a valid multi-step plan is accepted after dependency normalization");
-    if (plan.tasks.size() == 4) {
+           "a valid multi-step plan is accepted after dependency normalization");    if (plan.tasks.size() == 4) {
         expect(plan.tasks[0].id == "first" && plan.tasks[1].id == "parent" &&
                    plan.tasks[2].id == "child" && plan.tasks[3].id == "second",
                "topological ordering is deterministic and stable among ready tasks");
@@ -997,8 +994,7 @@ void test_descriptor_anchored_filesystem_operations() {
     request.modifies_state = true;
     const auto authorized = permissions.authorize(request);
     expect(authorized.decision == PermissionDecision::Allowed &&
-               static_cast<bool>(authorized.authorized_root),
-           "authorization returns a live directory-handle capability");
+               static_cast<bool>(authorized.authorized_root),           "authorization returns a live directory-handle capability");
 
     LinuxFilesystem filesystem;
     if (authorized.authorized_root) {
