@@ -69,8 +69,8 @@ struct ReasoningRequest {
     std::vector<Fact> facts;
     std::vector<Rule> rules;
     std::size_t max_candidates{256};
-    std::size_t max_facts_examined{1024};
     std::size_t max_rule_evaluations{128};
+    std::size_t max_facts_examined{1024};
 };
 
 struct ReasoningResult {
