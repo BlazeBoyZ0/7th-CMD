@@ -1,6 +1,7 @@
 #include "seventh/engines/grammar/grammar_engine.hpp"
 #include "seventh/engines/grammar/input_processor.hpp"
 #include "seventh/engines/grammar/typo_corrector.hpp"
+#include "seventh/engines/grammar/phrase_composer.hpp"
 #include "seventh/cli/terminal_output.hpp"
 #include "seventh/platform/linux/linux_filesystem.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
@@ -224,6 +225,49 @@ void test_grammar_typo_correction() {
 
     expect(TypoCorrector::damerau_levenshtein("form", "from") == 1,
            "the edit-distance metric counts adjacent transposition as one edit");
+}
+
+
+void test_grammar_phrase_composition() {
+    using namespace seventh::grammar;
+    const GrammarEngine grammar;
+
+    const auto punctuation = grammar.interpret(
+        "make a folder, name it Games; put it on Desktop");
+    expect(punctuation.valid && punctuation.operation == "create" &&
+               punctuation.entity_type == "folder" &&
+               punctuation.name == "Games" &&
+               punctuation.destination == "Desktop",
+           "separate name and destination phrases compose into one folder intent");
+
+    const auto conjunctions = grammar.interpret(
+        "make a folder and name it Projects and place it on Desktop");
+    expect(conjunctions.valid && conjunctions.name == "Projects" &&
+               conjunctions.destination == "Desktop",
+           "and-connected follow-up phrases compose into one folder intent");
+
+    const auto then_phrases = grammar.interpret(
+        "create a folder then call it BuildArea then put it in Documents");
+    expect(then_phrases.valid && then_phrases.name == "BuildArea" &&
+               then_phrases.destination == "Documents",
+           "then-separated naming and location phrases are composed");
+
+    const auto quoted_name = grammar.interpret(
+        "make a folder, name it \"My, Games\"; put it on Desktop");
+    expect(quoted_name.valid && quoted_name.name == "My, Games" &&
+               quoted_name.destination == "Desktop",
+           "quoted names remain intact while surrounding phrases are composed");
+
+    const auto ordinary = grammar.interpret(
+        "create a folder named Existing on Desktop");
+    expect(ordinary.valid && ordinary.name == "Existing" &&
+               ordinary.destination == "Desktop",
+           "ordinary single-clause folder commands retain their existing behavior");
+
+    const auto unrelated = grammar.interpret(
+        "open browser, then search for music");
+    expect(!unrelated.valid,
+           "unrecognized multi-intent instructions are not guessed into one task");
 }
 
 void test_grammar_interpretation() {
@@ -795,6 +839,7 @@ int main() {
     test_document_provider_rejects_binary_content();
     test_grammar_input_metadata();
     test_grammar_typo_correction();
+    test_grammar_phrase_composition();
     test_grammar_interpretation();
     test_entity_resolution_relevance();
     test_three_valued_logic();
