@@ -10,6 +10,8 @@ Plan GoalDecomposer::decompose(const PlanningRequest& request) const {
     Plan plan;
     plan.id = make_identifier("plan");
     plan.goal = request.goal;
+    plan.max_tasks = request.max_tasks;
+    plan.max_dependency_edges = request.max_dependency_edges;
     plan.tasks.reserve(request.tasks.size());
 
     for (const auto& draft : request.tasks) {

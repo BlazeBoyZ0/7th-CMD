@@ -16,7 +16,8 @@ std::vector<TaskDraft> TaskBreakdown::normalize(
         unique_dependencies.reserve(task.dependencies.size());
 
         for (const auto& dependency : task.dependencies) {
-            if (dependency.empty()) continue;
+            // Preserve empty entries: validation must report malformed input
+            // rather than silently deleting an intended dependency.
             if (std::find(unique_dependencies.begin(), unique_dependencies.end(),
                           dependency) == unique_dependencies.end()) {
                 unique_dependencies.push_back(dependency);
@@ -24,9 +25,6 @@ std::vector<TaskDraft> TaskBreakdown::normalize(
         }
 
         normalized.dependencies = std::move(unique_dependencies);
-
-        // Keep incomplete drafts so PlanValidator can report them instead of
-        // silently removing work the caller intended to include.
         result.push_back(std::move(normalized));
     }
 

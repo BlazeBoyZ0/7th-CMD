@@ -7,6 +7,7 @@ namespace seventh::planning {
 struct DependencyAnalysis {
     StringList missing_dependencies;
     bool has_cycle{false};
+    bool has_duplicate_task_ids{false};
 };
 
 class DependencyAnalyzer {
