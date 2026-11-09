@@ -6,6 +6,7 @@ CanonicalIntent CirGenerator::generate(const AstNode& node,const std::string& ra
     CanonicalIntent out; out.operation=node.operation; out.entity_type=node.entity_type;
     out.raw_input=raw; out.pattern_id=node.pattern_id; out.slots=node.slots;
     out.missing_information=node.missing_slots;
+    out.relationships=node.relationships;
     const auto value=[&](const char* k)->std::string{const auto i=node.slots.find(k);return i==node.slots.end()?std::string{}:i->second.value;};
     out.name=value("name"); if(out.name.empty())out.name=value("target"); if(out.name.empty())out.name=value("file");
     out.source=value("source"); out.destination=value("destination"); out.query=value("query");
