@@ -59,12 +59,14 @@ std::vector<std::vector<std::string>> split_clauses(
     std::vector<std::vector<std::string>> clauses;
     std::vector<std::string> current;
     for (std::size_t i = 0; i < tokens.size(); ++i) {
-        if (tokens[i] == "then" && !current.empty()) {
+        if (i < detailed.size() && !detailed[i].quoted &&
+            tokens[i] == "then" && !current.empty()) {
             clauses.push_back(std::move(current));
             current.clear();
             continue;
         }
-        if (tokens[i] == "and" && i + 1 < tokens.size()) {
+        if (i < detailed.size() && !detailed[i].quoted &&
+            tokens[i] == "and" && i + 1 < tokens.size()) {
             const auto& next = tokens[i + 1];
             const bool follow_up = next == "put" || next == "place" ||
                 next == "keep" || next == "save" || next == "move" ||
