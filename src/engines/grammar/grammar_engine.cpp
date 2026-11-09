@@ -51,7 +51,7 @@ CanonicalIntent GrammarEngine::interpret(const std::string& input) const {
         // Later tokens may be filenames, folder names, paths, or search data.
         std::size_t entity_index = 1;
         while (entity_index < detailed.size() &&
-               is_article_or_modifier(tokens[entity_index])) {
+               is_article_or_modifier(detailed[entity_index].normalized)) {
             ++entity_index;
         }
         if (entity_index < detailed.size()) {
