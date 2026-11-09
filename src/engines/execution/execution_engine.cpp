@@ -87,21 +87,26 @@ ExecutionResult ExecutionEngine::execute(const ExecutionRequest& request) {
 bool ExecutionEngine::record_terminal_failure(
     const std::string& task_id, const std::string& operation,
     const std::string& error, const std::string& cir_id, bool blocked) {
-    if (task_id.empty() || records_.contains(task_id)) return false;
-
-    ExecutionRecord record;
-    record.record_id = task_id;
-    record.task_id = task_id;
-    record.cir_id = cir_id;
-    record.status = blocked ? ExecutionStatus::NeedsPermission : ExecutionStatus::Failure;
-
     ExecutionStepRecord step;
     step.step_id = task_id;
     step.operation = operation.empty() ? "command" : operation;
     step.outcome = blocked ? StepOutcome::Blocked : StepOutcome::Failed;
     step.error = error;
-    record.steps.push_back(std::move(step));
+    return record_terminal_failure(task_id, std::vector<ExecutionStepRecord>{std::move(step)},
+                                   cir_id, {}, blocked);
+}
 
+bool ExecutionEngine::record_terminal_failure(
+    const std::string& task_id, const std::vector<ExecutionStepRecord>& steps,
+    const std::string& cir_id, const std::string& plan_id, bool blocked) {
+    if (task_id.empty() || records_.contains(task_id) || steps.empty()) return false;
+    ExecutionRecord record;
+    record.record_id = task_id;
+    record.task_id = task_id;
+    record.cir_id = cir_id;
+    record.plan_id = plan_id;
+    record.status = blocked ? ExecutionStatus::NeedsPermission : ExecutionStatus::Failure;
+    record.steps = steps;
     if (tracker_.begin(task_id)) {
         if (blocked) (void)tracker_.block(task_id);
         else (void)tracker_.fail(task_id);

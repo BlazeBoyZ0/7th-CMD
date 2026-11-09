@@ -94,3 +94,11 @@ add_test(
 target_compile_definitions(7thcmd_tests PRIVATE
     SEVENTH_CMD_TEST_GRAMMAR_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../config/grammar\"
 )
+
+add_test(
+    NAME 7thcmd_folder_chain
+    COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/test_folder_chain.sh $<TARGET_FILE:7thcmd>
+)
+set_tests_properties(7thcmd_folder_chain PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+)

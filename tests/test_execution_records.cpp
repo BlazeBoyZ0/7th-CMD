@@ -153,6 +153,24 @@ int main() {
               "preflight-failure", "create", "Overwrite attempt.", "cir-other"),
           "a later preflight failure cannot overwrite an existing record");
 
+    std::vector<ExecutionStepRecord> planned_failure_steps(2);
+    planned_failure_steps[0].step_id = "planned-step-1";
+    planned_failure_steps[0].operation = "create_directory";
+    planned_failure_steps[0].outcome = StepOutcome::Attempted;
+    planned_failure_steps[1].step_id = "planned-step-2";
+    planned_failure_steps[1].operation = "create_directory";
+    planned_failure_steps[1].outcome = StepOutcome::Failed;
+    planned_failure_steps[1].error = "Destination could not be resolved.";
+    check(engine.record_terminal_failure(
+              "planned-chain-failure", planned_failure_steps,
+              "cir-chain", "plan-chain"),
+          "multi-step preflight failures can be recorded against their plan");
+    const auto planned_chain_failure = engine.record_of("planned-chain-failure");
+    check(planned_chain_failure && planned_chain_failure->plan_id == "plan-chain" &&
+              planned_chain_failure->steps.size() == 2 &&
+              planned_chain_failure->steps[1].outcome == StepOutcome::Failed,
+          "multi-step failure records preserve plan ID and failed step position");
+
     const auto latest_before_bound = engine.latest_record();
     check(latest_before_bound && latest_before_bound->task_id == "preflight-block",
           "latest_record returns the most recently retained execution");
