@@ -1,5 +1,6 @@
 #include "seventh/engines/grammar/grammar_engine.hpp"
 #include "seventh/engines/grammar/input_processor.hpp"
+#include "seventh/engines/grammar/typo_corrector.hpp"
 #include "seventh/cli/terminal_output.hpp"
 #include "seventh/platform/linux/linux_filesystem.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
@@ -164,6 +165,65 @@ void test_grammar_input_metadata() {
                clauses[2].punctuation_after == "," &&
                clauses[5].punctuation_after == ";",
            "clause punctuation is retained as token metadata");
+}
+
+
+void test_grammar_typo_correction() {
+    using namespace seventh::grammar;
+
+    const TypoCorrector corrector;
+    const std::set<std::string> vocabulary{
+        "create", "folder", "directory", "application", "remove", "search"
+    };
+    const std::map<std::string, std::string> explicit_corrections{
+        {"creat", "create"}, {"foler", "folder"}
+    };
+
+    Token token;
+    token.text = "cretae";
+    auto result = corrector.correct(token, vocabulary, explicit_corrections, true);
+    expect(result.changed && result.value == "create" && result.distance == 1,
+           "the typo corrector recognizes an adjacent transposition");
+
+    token.text = "direcotry";
+    result = corrector.correct(token, vocabulary, explicit_corrections, true);
+    expect(result.changed && result.value == "directory" && result.distance == 2,
+           "long vocabulary terms allow a bounded two-edit correction");
+
+    token.text = "creat";
+    result = corrector.correct(token, vocabulary, explicit_corrections, true);
+    expect(result.changed && result.value == "create",
+           "explicit spelling corrections take priority over fuzzy matching");
+
+    token.text = "foler";
+    result = corrector.correct(token, vocabulary, explicit_corrections, true);
+    expect(result.changed && result.value == "folder",
+           "known entity spelling corrections remain supported");
+
+    token.text = "Games";
+    result = corrector.correct(token, vocabulary, explicit_corrections, true);
+    expect(!result.changed && result.value == "Games",
+           "unmatched user terms retain their original spelling and case");
+
+    token.text = "cretae";
+    token.quoted = true;
+    result = corrector.correct(token, vocabulary, explicit_corrections, true);
+    expect(!result.changed && result.value == "cretae",
+           "quoted values are never spelling-corrected");
+
+    token.quoted = false;
+    result = corrector.correct(token, vocabulary, explicit_corrections, false);
+    expect(!result.changed && result.value == "cretae",
+           "tokens outside an explicitly marked grammar position are untouched");
+
+    token.text = "cot";
+    const std::set<std::string> ambiguous_vocabulary{"cat", "cut"};
+    result = corrector.correct(token, ambiguous_vocabulary, {}, true);
+    expect(!result.changed && result.ambiguous && result.value == "cot",
+           "equally close vocabulary candidates are reported as ambiguous");
+
+    expect(TypoCorrector::damerau_levenshtein("form", "from") == 1,
+           "the edit-distance metric counts adjacent transposition as one edit");
 }
 
 void test_grammar_interpretation() {
@@ -734,6 +794,7 @@ void test_descriptor_anchored_filesystem_operations() {
 int main() {
     test_document_provider_rejects_binary_content();
     test_grammar_input_metadata();
+    test_grammar_typo_correction();
     test_grammar_interpretation();
     test_entity_resolution_relevance();
     test_three_valued_logic();
