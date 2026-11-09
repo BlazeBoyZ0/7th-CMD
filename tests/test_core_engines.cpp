@@ -5,6 +5,7 @@
 #include "seventh/engines/grammar/grammar_parser.hpp"
 #include "seventh/engines/grammar/ast_generator.hpp"
 #include "seventh/engines/grammar/semantic_analyzer.hpp"
+#include "seventh/engines/grammar/grammar_subsystem.hpp"
 #include "seventh/cli/terminal_output.hpp"
 #include "seventh/platform/linux/linux_filesystem.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
@@ -263,6 +264,44 @@ void test_grammar_semantic_relationships() {
     const auto plain = analyzer.analyze(ast_generator.generate(plain_match));
     expect(plain.relationships.empty(),
            "semantic analysis does not invent a parent relationship when no destination was given");
+}
+
+void test_grammar_cir_relationship_integration() {
+    using namespace seventh::grammar;
+
+    const GrammarEngine engine;
+    const auto intent = engine.interpret(
+        "create a folder named Games inside Documents");
+    expect(intent.schema_version == 2,
+           "canonical intent advertises the relationship-capable schema version");
+    expect(intent.valid && intent.relationships.size() == 1 &&
+               intent.relationships.front().subject == "Games" &&
+               intent.relationships.front().predicate == "contained_by" &&
+               intent.relationships.front().object == "Documents",
+           "CIR preserves typed semantic relationships from the AST");
+
+    GrammarSubsystem subsystem;
+    seventh::SubsystemRequest request;
+    request.request_id = "grammar-cir-test";
+    request.operation = "interpret";
+    request.input_data["raw_input"] =
+        "create a folder named Games on Desktop";
+    const auto result = subsystem.handle(request);
+    expect(result.successful() &&
+               result.result_data.at("schema_version") == "2" &&
+               result.result_data.at("relationship_count") == "1" &&
+               result.result_data.at("relationship.0.subject") == "Games" &&
+               result.result_data.at("relationship.0.predicate") == "located_on" &&
+               result.result_data.at("relationship.0.object") == "Desktop" &&
+               result.result_data.at("relationship.0.object_is_pronoun") == "false",
+           "grammar subsystem transports relationship fields to downstream consumers");
+
+    request.input_data["raw_input"] =
+        "create a folder named Games inside it";
+    const auto unresolved = subsystem.handle(request);
+    expect(unresolved.result_data.at("relationship.0.object") == "it" &&
+               unresolved.result_data.at("relationship.0.object_is_pronoun") == "true",
+           "CIR transport preserves unresolved pronouns without inventing an antecedent");
 }
 
 void test_grammar_phrase_composition() {
@@ -895,6 +934,7 @@ int main() {
     test_grammar_typo_correction();
     test_grammar_phrase_composition();
     test_grammar_semantic_relationships();
+    test_grammar_cir_relationship_integration();
     test_grammar_interpretation();
     test_entity_resolution_relevance();
     test_three_valued_logic();
