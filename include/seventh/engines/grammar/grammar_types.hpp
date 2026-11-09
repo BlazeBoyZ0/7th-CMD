@@ -33,10 +33,12 @@ struct AstNode {
     bool valid{false};
 };
 struct CanonicalIntent {
-    unsigned schema_version{1};
+    // Version 2 adds typed semantic relationships; existing scalar fields remain stable.
+    unsigned schema_version{2};
     std::string id, operation, entity_type, name, source, destination, query, raw_input, pattern_id;
     std::vector<std::string> missing_information;
     std::map<std::string, SlotValue> slots;
+    std::vector<EntityRelationship> relationships;
     bool valid{false};
     std::string error;
 };
