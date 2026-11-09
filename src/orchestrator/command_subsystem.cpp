@@ -32,9 +32,9 @@ std::string lower(std::string value) {
 }
 
 std::string entity_key(std::string value) {
-    const auto first = value.find_first_not_of(" \\t\\r\\n");
+    const auto first = value.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) return {};
-    const auto last = value.find_last_not_of(" \\t\\r\\n.,;:");
+    const auto last = value.find_last_not_of(" \t\r\n.,;:");
     if (last == std::string::npos || last < first) return {};
     return lower(value.substr(first, last - first + 1));
 }
