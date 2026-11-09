@@ -802,39 +802,24 @@ SubsystemResult CommandSubsystem::search_items(
         return failure(request.request_id, "The search task could not enter the running state.");
     }
 
-    information::InformationProcessor processor(information_registry_);
-    information::DataRequest data_request;
-    data_request.provider_id = "filesystem";
-    data_request.source_path = directory;
-    data_request.operation = "find";
-    data_request.field = "name";
-    data_request.value = intent.query;
-    const auto search = processor.process(data_request);
-    if (!search.success) {
-        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
-            return failure(request.request_id,
-                "The search provider failed and the plan state could not be marked failed.");
-        }
-        return failure(request.request_id, search.error);
-    }
+    execution::ExecutionRequest execution_request;
+    execution_request.task_id = request.task_id;
+    execution_request.cir_id = intent.id;
+    execution_request.plan_id = plan.id;
+    execution_request.plan_step_id = plan.tasks.front().id;
+    execution_request.operation = plan.tasks.front().operation;
+    execution_request.input_data = plan.tasks.front().input_data;
+    execution_request.requires_authorization = true;
+    execution_request.authorization_granted = true;
+    execution_request.authorized_root = permission.authorized_root;
 
-    constexpr std::size_t max_displayed_matches = 50;
-    std::string matches;
-    std::size_t count = 0;
-    std::size_t displayed = 0;
-    for (const auto& record : search.records) {
-        const auto name = record.find("name");
-        const auto path = record.find("path");
-        const auto type = record.find("type");
-        if (name == record.end() || path == record.end() || type == record.end()) continue;
-        if (intent.entity_type == "file" && type->second != "file") continue;
-        if (intent.entity_type == "folder" && type->second != "folder") continue;
-
-        ++count;
-        if (displayed >= max_displayed_matches) continue;
-        if (displayed != 0) matches += '\n';
-        matches += name->second + " | " + path->second;
-        ++displayed;
+    const auto executed = execution_engine_.execute(execution_request);
+    if (executed.status != execution::ExecutionStatus::Success) {
+        const bool marked_failed = plan_state_manager_.fail(plan, plan.tasks.front().id);
+        auto result = failure(request.request_id, executed.error);
+        if (!marked_failed) result.error += " The search plan state could not be marked failed.";
+        result.result_data["execution_record_id"] = execution_request.task_id;
+        return result;
     }
 
     verification::VerificationRequest verification_request;
@@ -842,17 +827,29 @@ SubsystemResult CommandSubsystem::search_items(
     verification_request.expected["exists"] = "true";
     verification_request.actual["exists"] =
         std::filesystem::is_directory(directory, ec) && !ec ? "true" : "false";
-    if (!verification_system_.verify(verification_request).verified) {
-        if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
-            return failure(request.request_id,
-                "Search verification failed and the plan state could not be marked failed.");
-        }
-        return failure(request.request_id, "The search result could not be verified.");
+    const auto verification_result = verification_system_.verify(verification_request);
+    (void)execution_engine_.set_verification(
+        execution_request.task_id,
+        verification_result.verified ? execution::VerificationOutcome::Passed
+                                     : execution::VerificationOutcome::Failed);
+    if (!verification_result.verified) {
+        const bool marked_failed = plan_state_manager_.fail(plan, plan.tasks.front().id);
+        auto result = failure(request.request_id, "The search result could not be verified.");
+        if (!marked_failed) result.error += " The search plan state could not be marked failed.";
+        result.result_data["execution_record_id"] = execution_request.task_id;
+        return result;
     }
 
     if (!plan_state_manager_.complete(plan, plan.tasks.front().id)) {
-        return failure(request.request_id, "The search plan could not be marked complete.");
+        auto result = failure(request.request_id, "The search plan could not be marked complete.");
+        result.result_data["execution_record_id"] = execution_request.task_id;
+        return result;
     }
+
+    const auto output = [&executed](const std::string& key) -> std::string {
+        const auto found = executed.output_data.find(key);
+        return found == executed.output_data.end() ? std::string{} : found->second;
+    };
 
     SubsystemResult result;
     result.request_id = request.request_id;
@@ -861,10 +858,12 @@ SubsystemResult CommandSubsystem::search_items(
     result.result_data["entity_type"] = intent.entity_type;
     result.result_data["directory"] = directory;
     result.result_data["query"] = intent.query;
-    result.result_data["count"] = std::to_string(count);
-    result.result_data["displayed"] = std::to_string(displayed);
-    result.result_data["truncated"] = count > displayed ? "true" : "false";
-    result.result_data["matches"] = std::move(matches);
+    result.result_data["count"] = output("count");
+    result.result_data["displayed"] = output("displayed");
+    result.result_data["truncated"] = output("truncated");
+    result.result_data["matches"] = output("matches");
+    result.result_data["execution_record_id"] = execution_request.task_id;
+    result.result_data["verified"] = "true";
     return result;
 }
 
