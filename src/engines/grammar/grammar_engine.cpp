@@ -28,7 +28,8 @@ bool is_article_or_modifier(const std::string& token) {
 
 bool is_courtesy_word(const std::string& token) {
     static const std::set<std::string> words{
-        "hey", "hi", "hello", "please", "kindly", "dude"
+        "hey", "hi", "hello", "please", "kindly", "dude",
+        "okay", "ok", "thanks", "thank", "you"
     };
     return words.contains(token);
 }
