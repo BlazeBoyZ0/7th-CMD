@@ -264,6 +264,13 @@ void test_grammar_phrase_composition() {
                conversational.destination == "Desktop",
            "recognized courtesy preambles and closings do not obscure a folder command");
 
+    const auto typo_and_casual = grammar.interpret(
+        "hey dude, make new diraectory, name it Games; place it on Desktop, okay?");
+    expect(typo_and_casual.valid && typo_and_casual.entity_type == "folder" &&
+               typo_and_casual.name == "Games" &&
+               typo_and_casual.destination == "Desktop",
+           "courtesy words, a known entity typo, and follow-up phrases compose safely");
+
     const auto ordinary = grammar.interpret(
         "create a folder named Existing on Desktop");
     expect(ordinary.valid && ordinary.name == "Existing" &&
