@@ -1,6 +1,7 @@
 #pragma once
 #include "seventh/engines/execution/action_dispatcher.hpp"
 #include "seventh/engines/execution/execution_tracker.hpp"
+#include <cstddef>
 #include <map>
 #include <optional>
 #include <string>
