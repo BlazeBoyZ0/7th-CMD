@@ -67,7 +67,11 @@ void print_help() {
 }
 
 void print_version() {
-    std::cout << "7th cmd " << SEVENTH_CMD_VERSION << '\n';
+    std::cout
+        << "7th cmd " << SEVENTH_CMD_VERSION << '\n'
+        << "Platform: Linux\n"
+        << "Interface: interactive CLI\n"
+        << "Execution history: session-only, latest 100 records\n";
 }
 
 } // namespace seventh::cli
