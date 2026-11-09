@@ -1,4 +1,5 @@
 #include "seventh/engines/grammar/grammar_engine.hpp"
+#include "seventh/engines/grammar/input_processor.hpp"
 #include "seventh/cli/terminal_output.hpp"
 #include "seventh/platform/linux/linux_filesystem.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
@@ -127,6 +128,42 @@ void test_document_provider_rejects_binary_content() {
     expect(!provider->acquire(request, records, error) &&
                error.find("binary") != std::string::npos,
            "the document provider rejects embedded null bytes as binary content");
+}
+
+void test_grammar_input_metadata() {
+    using namespace seventh::grammar;
+
+    const Normalizer normalizer;
+    const auto normalized = normalizer.normalize(
+        "  Create\\t a folder named \\"My  Games\\"\\r\\n on Desktop...  ");
+    expect(normalized == "Create a folder named \\"My  Games\\" on Desktop...",
+           "normalization collapses external whitespace but preserves quoted values");
+
+    const InputProcessor processor;
+    const auto tokens = processor.process_detailed(
+        "Create a folder named \\"My  Games\\" on Desktop...");
+    expect(tokens.size() == 7,
+           "detailed tokenization keeps quoted multi-word values as one token");
+    if (tokens.size() == 7) {
+        expect(tokens[5].text == "My  Games" && tokens[5].quoted,
+               "quoted token content and quote metadata are preserved");
+        expect(tokens[0].begin == 0 && tokens[0].end == 6 &&
+                   tokens[0].normalized == "create",
+               "tokens retain byte offsets and a lowercase matching form");
+        expect(tokens.back().punctuation_after == "...",
+               "trailing punctuation is recorded without becoming a token");
+    }
+
+    const auto filename = processor.process_detailed("open main.cpp");
+    expect(filename.size() == 2 && filename[1].text == "main.cpp",
+           "periods inside filenames are not treated as sentence punctuation");
+
+    const auto clauses = processor.process_detailed(
+        "make a folder, name it Games; put it on Desktop!");
+    expect(clauses.size() == 10 &&
+               clauses[3].punctuation_after == "," &&
+               clauses[6].punctuation_after == ";",
+           "clause punctuation is retained as token metadata");
 }
 
 void test_grammar_interpretation() {
@@ -696,6 +733,7 @@ void test_descriptor_anchored_filesystem_operations() {
 
 int main() {
     test_document_provider_rejects_binary_content();
+    test_grammar_input_metadata();
     test_grammar_interpretation();
     test_entity_resolution_relevance();
     test_three_valued_logic();
