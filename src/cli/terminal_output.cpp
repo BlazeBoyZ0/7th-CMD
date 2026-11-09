@@ -103,7 +103,7 @@ void print_startup_message() {
     std::cout
         << "7th cmd v0.1 foundation build.\n"
         << "Command mode is active; enter an instruction to begin.\n"
-        << "Use --help to see available options.\n";
+        << "Type --help at the prompt to see capabilities and available controls.\n";
 }
 
 void print_message(const std::string_view message) {
