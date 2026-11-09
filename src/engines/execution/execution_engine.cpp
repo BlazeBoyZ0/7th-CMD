@@ -115,6 +115,42 @@ bool ExecutionEngine::record_terminal_failure(
     return true;
 }
 
+
+bool ExecutionEngine::record_aggregate(
+    const std::string& task_id, const std::vector<std::string>& step_task_ids,
+    const std::string& cir_id, const std::string& plan_id) {
+    if (task_id.empty() || records_.contains(task_id) || step_task_ids.empty()) return false;
+
+    ExecutionRecord aggregate;
+    aggregate.record_id = task_id;
+    aggregate.task_id = task_id;
+    aggregate.cir_id = cir_id;
+    aggregate.plan_id = plan_id;
+    aggregate.status = ExecutionStatus::Success;
+
+    for (const auto& step_task_id : step_task_ids) {
+        const auto found = records_.find(step_task_id);
+        if (found == records_.end()) continue;
+        aggregate.steps.insert(aggregate.steps.end(),
+                               found->second.steps.begin(), found->second.steps.end());
+        if (found->second.status == ExecutionStatus::NeedsPermission) {
+            aggregate.status = ExecutionStatus::NeedsPermission;
+        } else if (found->second.status != ExecutionStatus::Success &&
+                   aggregate.status != ExecutionStatus::NeedsPermission) {
+            aggregate.status = ExecutionStatus::Failure;
+        }
+    }
+    if (aggregate.steps.empty()) return false;
+
+    if (tracker_.begin(task_id)) {
+        if (aggregate.status == ExecutionStatus::Success) (void)tracker_.complete(task_id);
+        else if (aggregate.status == ExecutionStatus::NeedsPermission) (void)tracker_.block(task_id);
+        else (void)tracker_.fail(task_id);
+    }
+    retain_record(std::move(aggregate));
+    return true;
+}
+
 void ExecutionEngine::retain_record(ExecutionRecord record) {
     const auto task_id = record.task_id;
     records_.insert_or_assign(task_id, std::move(record));
