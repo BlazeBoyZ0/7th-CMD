@@ -26,6 +26,13 @@ bool is_article_or_modifier(const std::string& token) {
     return token == "a" || token == "an" || token == "the" || token == "new";
 }
 
+bool is_courtesy_word(const std::string& token) {
+    static const std::set<std::string> words{
+        "hey", "hi", "hello", "please", "kindly", "dude"
+    };
+    return words.contains(token);
+}
+
 } // namespace
 
 GrammarEngine::GrammarEngine(GrammarConfig config) : config_(std::move(config)) {}
@@ -43,14 +50,21 @@ CanonicalIntent GrammarEngine::interpret(const std::string& input) const {
         const auto entity_vocabulary =
             vocabulary_with_aliases(config_.entities, config_.synonyms);
 
-        const auto action = corrector.correct(
-            detailed.front(), action_vocabulary,
-            config_.spelling_corrections, true);
-        if (action.changed) tokens.front() = action.value;
+        std::size_t command_index = 0;
+        while (command_index < detailed.size() &&
+               is_courtesy_word(detailed[command_index].normalized)) {
+            ++command_index;
+        }
 
-        // Only the first entity slot after articles/modifiers is eligible.
-        // Later tokens may be filenames, folder names, paths, or search data.
-        std::size_t entity_index = 1;
+        const auto action = command_index < detailed.size()
+            ? corrector.correct(detailed[command_index], action_vocabulary,
+                                config_.spelling_corrections, true)
+            : CorrectionResult{};
+        if (action.changed) tokens[command_index] = action.value;
+
+        // Only the first entity slot after the recognized command and its
+        // articles/modifiers is eligible. Later tokens are user data.
+        std::size_t entity_index = command_index + 1;
         while (entity_index < detailed.size() &&
                is_article_or_modifier(detailed[entity_index].normalized)) {
             ++entity_index;
