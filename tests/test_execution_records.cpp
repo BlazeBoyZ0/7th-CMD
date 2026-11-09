@@ -74,6 +74,20 @@ int main() {
               blocked_record && blocked_record->steps[0].outcome == StepOutcome::Blocked,
           "authorization blocks are recorded and reflected in tracker state");
 
+    ExecutionRequest verification_success;
+    verification_success.task_id = "record-task-verified";
+    verification_success.operation = "create_directory";
+    verification_success.input_data["path"] = "/tmp/verified";
+    check(engine.execute(verification_success).status == ExecutionStatus::Success,
+          "operation succeeds before successful postcondition verification");
+    check(engine.set_verification(verification_success.task_id, VerificationOutcome::Passed),
+          "successful postcondition verification can be attached to its record");
+    const auto passed_verification = engine.record_of(verification_success.task_id);
+    check(passed_verification &&
+              passed_verification->status == ExecutionStatus::Success &&
+              passed_verification->steps[0].verification == VerificationOutcome::Passed,
+          "successful verification preserves the successful execution status");
+
     ExecutionRequest verification_failure;
     verification_failure.task_id = "record-task-3";
     verification_failure.operation = "create_directory";
