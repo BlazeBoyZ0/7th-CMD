@@ -363,6 +363,90 @@ void test_grammar_phrase_composition() {
 
 }
 
+void test_grammar_adversarial_boundaries() {
+    using namespace seventh::grammar;
+
+    const InputProcessor processor;
+    const PhraseComposer composer;
+    const GrammarConfig config = GrammarConfig::defaults();
+
+    const auto malformed = processor.process_detailed(
+        "create a folder, name it");
+    std::vector<std::string> malformed_tokens;
+    for (const auto& token : malformed) malformed_tokens.push_back(token.text);
+    const auto incomplete_composition =
+        composer.compose(malformed, malformed_tokens, config);
+    expect(incomplete_composition ==
+               std::vector<std::string>({"create", "a", "folder"}),
+           "an incomplete naming fragment is not promoted into a name");
+
+    const auto unknown_prefix = processor.process_detailed(
+        "yo, create a folder, name it Games");
+    std::vector<std::string> unknown_tokens;
+    for (const auto& token : unknown_prefix) unknown_tokens.push_back(token.text);
+    expect(composer.compose(unknown_prefix, unknown_tokens, config) ==
+               unknown_tokens,
+           "an unrecognized leading clause prevents silent prefix removal");
+
+    const auto no_primary = processor.process_detailed("please open browser");
+    std::vector<std::string> no_primary_tokens;
+    for (const auto& token : no_primary) no_primary_tokens.push_back(token.text);
+    expect(composer.compose(no_primary, no_primary_tokens, config) ==
+               no_primary_tokens,
+           "the folder phrase composer leaves unrelated command families unchanged");
+
+    const auto empty = processor.process_detailed("");
+    expect(composer.compose(empty, {"create"}, config) ==
+               std::vector<std::string>({"create"}),
+           "the phrase composer safely returns input when token metadata is mismatched");
+
+    const GrammarEngine grammar;
+    const auto quoted_user_value = grammar.interpret(
+        "create a folder named \"Foler\" on Desktop");
+    expect(quoted_user_value.valid && quoted_user_value.name == "Foler",
+           "a quoted value resembling a grammar typo is preserved exactly");
+
+    const auto empty_intent = grammar.interpret("");
+    expect(!empty_intent.valid,
+           "empty input remains an invalid intent rather than becoming a command");
+}
+
+void test_grammar_relationship_marker_matrix() {
+    using namespace seventh::grammar;
+
+    const GrammarConfig config = GrammarConfig::defaults();
+    const GrammarParser parser;
+    const AstGenerator ast_generator;
+    const SemanticAnalyzer analyzer;
+
+    const std::vector<std::pair<std::string, std::string>> cases{
+        {"on", "located_on"},
+        {"in", "located_in"},
+        {"inside", "contained_by"},
+        {"within", "contained_by"}
+    };
+
+    for (const auto& [marker, predicate] : cases) {
+        const auto match = parser.parse(
+            {"create", "a", "folder", "named", "Games", marker, "Documents"},
+            config);
+        const auto analyzed = analyzer.analyze(ast_generator.generate(match));
+        expect(analyzed.relationships.size() == 1 &&
+                   analyzed.relationships.front().predicate == predicate &&
+                   analyzed.relationships.front().object == "Documents",
+               "the semantic relationship marker '" + marker +
+                   "' maps to its documented predicate");
+    }
+
+    const auto unsupported_marker = parser.parse(
+        {"create", "a", "folder", "named", "Games", "near", "Documents"},
+        config);
+    const auto unsupported =
+        analyzer.analyze(ast_generator.generate(unsupported_marker));
+    expect(unsupported.relationships.empty(),
+           "an unsupported spatial word does not create a fabricated relationship");
+}
+
 void test_grammar_interpretation() {
     using seventh::grammar::GrammarEngine;
     const GrammarEngine grammar;
@@ -933,6 +1017,8 @@ int main() {
     test_grammar_input_metadata();
     test_grammar_typo_correction();
     test_grammar_phrase_composition();
+    test_grammar_adversarial_boundaries();
+    test_grammar_relationship_marker_matrix();
     test_grammar_semantic_relationships();
     test_grammar_cir_relationship_integration();
     test_grammar_interpretation();
