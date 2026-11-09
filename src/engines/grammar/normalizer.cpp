@@ -9,16 +9,26 @@ std::string Normalizer::normalize(const std::string& input) const {
     output.reserve(input.size());
     bool previous_was_space = true;
 
-    for (const unsigned char character : input) {
-        if (std::isspace(character)) {
+    for (std::size_t index = 0; index < input.size(); ++index) {
+        const unsigned char character =
+            static_cast<unsigned char>(input[index]);
+
+        if (character == '\r' || character == '\n' ||
+            character == '\t' || std::isspace(character)) {
             if (!previous_was_space) {
                 output += ' ';
                 previous_was_space = true;
             }
+            // Treat CRLF as one whitespace boundary.
+            if (character == '\r' && index + 1 < input.size() &&
+                input[index + 1] == '\n') {
+                ++index;
+            }
             continue;
         }
 
-        // Preserve letter case: names and paths must retain the user's spelling.
+        // Preserve case and punctuation: names, paths, and quoted values
+        // must not be silently rewritten during lexical normalization.
         output += static_cast<char>(character);
         previous_was_space = false;
     }
