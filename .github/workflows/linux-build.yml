@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - v0.1-gpt
+      - v0.2-gpt
   workflow_dispatch:
 
 permissions:

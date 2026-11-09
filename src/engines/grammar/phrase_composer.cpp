@@ -1,6 +1,7 @@
 #include "seventh/engines/grammar/phrase_composer.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <string_view>
 #include <set>

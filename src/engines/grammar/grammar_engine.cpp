@@ -6,6 +6,7 @@
 #include "seventh/engines/grammar/phrase_composer.hpp"
 #include "seventh/engines/grammar/typo_corrector.hpp"
 
+#include <cctype>
 #include <set>
 #include <utility>
 
