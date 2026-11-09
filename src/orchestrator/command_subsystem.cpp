@@ -1729,6 +1729,11 @@ SubsystemResult CommandSubsystem::create_folder_chain(
         }
         return joined;
     };
+    const auto retain_aggregate_record = [&]() {
+        return execution_engine_.record_aggregate(
+            request.task_id, execution_record_ids,
+            cir_ids.empty() ? std::string{} : cir_ids.front(), plan.id);
+    };
     for (std::size_t index = 0; index < plan.tasks.size(); ++index) {
         if (request.cancellation_requested &&
             request.cancellation_requested->load()) {
@@ -1739,6 +1744,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["total_steps"] = std::to_string(clauses.size());
             result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            (void)retain_aggregate_record();
+            result.result_data["execution_record_id"] = request.task_id;
             return result;
         }
         auto& task = plan.tasks[index];
@@ -1749,6 +1756,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["total_steps"] = std::to_string(clauses.size());
             result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            (void)retain_aggregate_record();
+            result.result_data["execution_record_id"] = request.task_id;
             return result;
         }
 
@@ -1773,6 +1782,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["total_steps"] = std::to_string(clauses.size());
             result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            (void)retain_aggregate_record();
+            result.result_data["execution_record_id"] = request.task_id;
             return result;
         }
 
@@ -1803,6 +1814,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["total_steps"] = std::to_string(clauses.size());
             result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            (void)retain_aggregate_record();
+            result.result_data["execution_record_id"] = request.task_id;
             return result;
         }
         if (!plan_state_manager_.complete(plan, task.id)) {
@@ -1812,6 +1825,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
             result.result_data["total_steps"] = std::to_string(clauses.size());
             result.result_data["attempted_steps"] = std::to_string(execution_record_ids.size());
             result.result_data["execution_record_ids"] = joined_execution_record_ids();
+            (void)retain_aggregate_record();
+            result.result_data["execution_record_id"] = request.task_id;
             return result;
         }
         remember_folder(folder_names[index], target_paths[index]);
@@ -1834,6 +1849,8 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     result.result_data["name"] = folder_names.back();
     result.result_data["verified"] = "true";
     result.result_data["execution_record_ids"] = joined_execution_record_ids();
+    (void)retain_aggregate_record();
+    result.result_data["execution_record_id"] = request.task_id;
     return result;
 }
 
