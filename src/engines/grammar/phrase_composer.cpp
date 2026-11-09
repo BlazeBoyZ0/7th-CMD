@@ -145,14 +145,16 @@ std::vector<std::string> PhraseComposer::compose(
         const auto& clause = clauses[clause_index];
         if (clause.empty() || is_polite_clause(clause)) continue;
 
-        if (!has_name && is_name_phrase(clause)) {
+        if (is_name_phrase(clause)) {
+            if (has_name) return {};
             result.push_back("named");
             result.insert(result.end(), clause.begin() + 2, clause.end());
             has_name = true;
             continue;
         }
 
-        if (!has_destination && is_location_phrase(clause)) {
+        if (is_location_phrase(clause)) {
+            if (has_destination) return {};
             std::size_t position = 1;
             if (is_reference_pronoun(clause[position])) ++position;
             const std::string marker =
@@ -161,7 +163,20 @@ std::vector<std::string> PhraseComposer::compose(
             result.insert(result.end(), clause.begin() +
                 static_cast<std::ptrdiff_t>(position + 1), clause.end());
             has_destination = true;
+            continue;
         }
+
+        // Recognized but incomplete follow-ups leave the primary command
+        // incomplete, allowing the parser to request the missing value.
+        if (clause.size() >= 2 &&
+            (clause[0] == "name" || clause[0] == "call") &&
+            is_reference_pronoun(clause[1])) {
+            return result;
+        }
+
+        // Never silently drop an extra clause or reinterpret a multi-action
+        // request as a partial folder-creation command.
+        return {};
     }
     return result;
 }
