@@ -171,6 +171,38 @@ int main() {
               planned_chain_failure->steps[1].outcome == StepOutcome::Failed,
           "multi-step failure records preserve plan ID and failed step position");
 
+    ExecutionRequest aggregate_step_one;
+    aggregate_step_one.task_id = "aggregate-step-1";
+    aggregate_step_one.operation = "create_directory";
+    aggregate_step_one.input_data["path"] = "/tmp/aggregate-parent";
+    aggregate_step_one.cir_id = "aggregate-cir-1";
+    aggregate_step_one.plan_id = "aggregate-plan";
+    aggregate_step_one.plan_step_id = "aggregate-plan-step-1";
+    check(engine.execute(aggregate_step_one).status == ExecutionStatus::Success,
+          "first aggregate step executes");
+    check(engine.set_verification("aggregate-step-1", VerificationOutcome::Passed),
+          "first aggregate step is verified");
+    ExecutionRequest aggregate_step_two = aggregate_step_one;
+    aggregate_step_two.task_id = "aggregate-step-2";
+    aggregate_step_two.plan_step_id = "aggregate-plan-step-2";
+    aggregate_step_two.input_data["path"] = "/tmp/aggregate-parent/child";
+    check(engine.execute(aggregate_step_two).status == ExecutionStatus::Success,
+          "second aggregate step executes");
+    check(engine.set_verification("aggregate-step-2", VerificationOutcome::Passed),
+          "second aggregate step is verified");
+    const std::vector<std::string> aggregate_ids{
+        "aggregate-step-1", "aggregate-step-2"};
+    check(engine.record_aggregate("aggregate-original-task", aggregate_ids,
+                                  "aggregate-cir-1", "aggregate-plan"),
+          "step records combine under the original task ID");
+    const auto aggregate = engine.record_of("aggregate-original-task");
+    check(aggregate && aggregate->steps.size() == 2 &&
+              aggregate->plan_id == "aggregate-plan" &&
+              aggregate->steps[0].verification == VerificationOutcome::Passed &&
+              aggregate->steps[1].verification == VerificationOutcome::Passed &&
+              engine.state_of("aggregate-original-task") == ExecutionState::Completed,
+          "aggregate record preserves both verified steps and completed task state");
+
     const auto latest_before_bound = engine.latest_record();
     check(latest_before_bound && latest_before_bound->task_id == "planned-chain-failure",
           "latest_record returns the most recently retained execution");
