@@ -2,6 +2,9 @@
 #include "seventh/engines/grammar/input_processor.hpp"
 #include "seventh/engines/grammar/typo_corrector.hpp"
 #include "seventh/engines/grammar/phrase_composer.hpp"
+#include "seventh/engines/grammar/grammar_parser.hpp"
+#include "seventh/engines/grammar/ast_generator.hpp"
+#include "seventh/engines/grammar/semantic_analyzer.hpp"
 #include "seventh/cli/terminal_output.hpp"
 #include "seventh/platform/linux/linux_filesystem.hpp"
 #include "seventh/engines/planning/planning_engine.hpp"
@@ -227,6 +230,40 @@ void test_grammar_typo_correction() {
            "the edit-distance metric counts adjacent transposition as one edit");
 }
 
+
+void test_grammar_semantic_relationships() {
+    using namespace seventh::grammar;
+    const GrammarConfig config = GrammarConfig::defaults();
+    const GrammarParser parser;
+    const AstGenerator ast_generator;
+    const SemanticAnalyzer analyzer;
+
+    const auto located_match = parser.parse(
+        {"create", "a", "folder", "named", "Games", "on", "Desktop"}, config);
+    const auto located = analyzer.analyze(ast_generator.generate(located_match));
+    expect(located.relationships.size() == 1 &&
+               located.relationships.front().subject == "Games" &&
+               located.relationships.front().predicate == "located_on" &&
+               located.relationships.front().object == "Desktop" &&
+               located.relationships.front().subject_type == "folder" &&
+               !located.relationships.front().object_is_pronoun,
+           "semantic analysis records an explicit folder-to-location relationship");
+
+    const auto contained_match = parser.parse(
+        {"create", "a", "folder", "named", "Games", "inside", "it"}, config);
+    const auto contained = analyzer.analyze(ast_generator.generate(contained_match));
+    expect(contained.relationships.size() == 1 &&
+               contained.relationships.front().predicate == "contained_by" &&
+               contained.relationships.front().object == "it" &&
+               contained.relationships.front().object_is_pronoun,
+           "semantic analysis preserves unresolved pronoun references instead of guessing");
+
+    const auto plain_match = parser.parse(
+        {"create", "a", "folder", "named", "Games"}, config);
+    const auto plain = analyzer.analyze(ast_generator.generate(plain_match));
+    expect(plain.relationships.empty(),
+           "semantic analysis does not invent a parent relationship when no destination was given");
+}
 
 void test_grammar_phrase_composition() {
     using namespace seventh::grammar;
@@ -857,6 +894,7 @@ int main() {
     test_grammar_input_metadata();
     test_grammar_typo_correction();
     test_grammar_phrase_composition();
+    test_grammar_semantic_relationships();
     test_grammar_interpretation();
     test_entity_resolution_relevance();
     test_three_valued_logic();
