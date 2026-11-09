@@ -218,6 +218,55 @@ void test_rule_budget_can_complete_exactly() {
            "derived evidence preserves its rule provenance");
 }
 
+
+void test_rule_fact_scan_budget_is_enforced() {
+    ReasoningRequest request;
+    request.query = {"target", "available", "true", true};
+    request.facts = {
+        fact("unrelated-a", "ready", "true"),
+        fact("unrelated-b", "ready", "true"),
+        fact("seed", "ready", "true"),
+        fact("unrelated-c", "ready", "true")
+    };
+
+    Rule rule;
+    rule.id = "derive-target-from-seed";
+    rule.premises.push_back(
+        {"seed", "ready", "true", ConditionOperator::Equal});
+    rule.conclusion = fact("target", "available", "true");
+    request.rules = {rule};
+    request.max_rule_facts_examined = 2;
+
+    const auto result = ReasoningEngine{}.evaluate(request);
+    expect(result.truth == TruthValue::Unknown &&
+               result.rule_fact_budget_exhausted &&
+               result.budget_exhausted,
+           "fact scanning inside rule evaluation is bounded and cannot prove a conclusion when truncated");
+    expect(result.rule_facts_examined == 2 && result.derived_facts.empty(),
+           "rule fact-scan metadata reports the exact inspection limit");
+}
+
+void test_rule_fact_scan_can_finish_exactly_at_limit() {
+    ReasoningRequest request;
+    request.query = {"target", "available", "true", true};
+    request.facts = {fact("seed", "ready", "true")};
+
+    Rule rule;
+    rule.id = "derive-target-at-limit";
+    rule.premises.push_back(
+        {"seed", "ready", "true", ConditionOperator::Equal});
+    rule.conclusion = fact("target", "available", "true");
+    request.rules = {rule};
+    request.max_rule_facts_examined = 1;
+
+    const auto result = ReasoningEngine{}.evaluate(request);
+    expect(result.truth == TruthValue::True &&
+               !result.rule_fact_budget_exhausted,
+           "rule fact scanning that finishes exactly at its limit remains complete");
+    expect(result.rule_facts_examined == 1,
+           "rule fact-scan metadata counts each inspected fact");
+}
+
 } // namespace
 
 int main() {
@@ -230,6 +279,8 @@ int main() {
     test_incomplete_search_never_proves_truth_or_absence();
     test_rule_budget_incompleteness();
     test_rule_budget_can_complete_exactly();
+    test_rule_fact_scan_budget_is_enforced();
+    test_rule_fact_scan_can_finish_exactly_at_limit();
 
     if (failures != 0) {
         std::cerr << failures << " reasoning test(s) failed.\n";

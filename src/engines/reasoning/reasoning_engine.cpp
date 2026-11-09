@@ -41,11 +41,15 @@ ReasoningResult ReasoningEngine::evaluate(const ReasoningRequest& request) const
     auto active_rules = configured_rules_;
     active_rules.insert(active_rules.end(), request.rules.begin(), request.rules.end());
     const auto rules = rule_evaluator_.evaluate(
-        active_rules, request.facts, request.max_rule_evaluations);
+        active_rules, request.facts, request.max_rule_evaluations,
+        request.max_rule_facts_examined);
     result.rule_evaluations = rules.evaluations;
+    result.rule_facts_examined = rules.facts_examined;
     result.rule_budget_exhausted = rules.budget_exhausted;
+    result.rule_fact_budget_exhausted = rules.fact_budget_exhausted;
     result.budget_exhausted = result.search.truncated() ||
-                              result.rule_budget_exhausted;
+                              result.rule_budget_exhausted ||
+                              result.rule_fact_budget_exhausted;
     result.derived_facts = rules.derived;
 
     FactResolution derived;
@@ -72,17 +76,22 @@ ReasoningResult ReasoningEngine::evaluate(const ReasoningRequest& request) const
     const bool conflict = direct.contradiction || derived.contradiction ||
         opposing_conclusions || contradiction_handler_.contradictory(result.evidence);
 
-    // A partial search or incomplete rule pass cannot establish that the
-    // retained evidence is the whole relevant evidence set. Preserve evidence
-    // for diagnostics, but do not publish a definitive truth value.
-    if (result.search.truncated() || result.rule_budget_exhausted) {
+    // An incomplete search or rule pass cannot establish that the retained
+    // evidence is the whole relevant evidence set. Keep it for diagnostics,
+    // but never publish a definitive truth value.
+    if (result.search.truncated() || result.rule_budget_exhausted ||
+        result.rule_fact_budget_exhausted) {
         result.truth = TruthValue::Unknown;
-        if (result.search.truncated() && result.rule_budget_exhausted) {
+        if (result.search.truncated() &&
+            (result.rule_budget_exhausted || result.rule_fact_budget_exhausted)) {
             result.explanation =
                 "The fact search and rule-evaluation budgets were exhausted before a reliable conclusion.";
         } else if (result.search.truncated()) {
             result.explanation =
                 "The fact search was incomplete; additional relevant evidence may exist.";
+        } else if (result.rule_fact_budget_exhausted) {
+            result.explanation =
+                "The rule evaluator reached its fact-inspection limit before all applicable conditions were checked.";
         } else {
             result.explanation =
                 "The rule-evaluation budget was exhausted before all applicable rules were checked.";

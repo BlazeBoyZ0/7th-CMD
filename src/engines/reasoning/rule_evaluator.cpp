@@ -10,13 +10,30 @@
 namespace seventh::reasoning {
 namespace {
 
-TruthValue evaluate_condition(const RuleCondition& condition,
-                              const std::vector<Fact>& facts) {
+struct ConditionEvaluation {
+    TruthValue truth{TruthValue::Unknown};
+    unsigned confidence{0};
+    std::uint64_t latest_observation{0};
+    bool has_support{false};
+    bool budget_exhausted{false};
+};
+
+ConditionEvaluation evaluate_condition(const RuleCondition& condition,
+                                       const std::vector<Fact>& facts,
+                                       std::size_t& facts_examined,
+                                       std::size_t max_facts_examined) {
+    ConditionEvaluation result;
     bool found_property = false;
     bool found_equal = false;
     bool found_different = false;
 
     for (const auto& fact : facts) {
+        if (facts_examined >= max_facts_examined) {
+            result.budget_exhausted = true;
+            return result;
+        }
+        ++facts_examined;
+
         if (!fact.fresh || fact.subject != condition.subject ||
             fact.property != condition.property) {
             continue;
@@ -25,66 +42,46 @@ TruthValue evaluate_condition(const RuleCondition& condition,
         found_property = true;
         if (fact.value == condition.value) {
             found_equal = true;
+            result.has_support = true;
         } else {
             found_different = true;
+            if (condition.operation == ConditionOperator::NotEqual) {
+                result.has_support = true;
+            }
+        }
+
+        if (result.has_support) {
+            result.confidence = std::max(result.confidence, fact.confidence);
+            result.latest_observation =
+                std::max(result.latest_observation, fact.observed_at);
+        }
+        if (condition.operation == ConditionOperator::Exists) {
+            result.has_support = true;
+            result.confidence = std::max(result.confidence, fact.confidence);
+            result.latest_observation =
+                std::max(result.latest_observation, fact.observed_at);
         }
     }
 
     switch (condition.operation) {
     case ConditionOperator::Equal:
-        if (!found_property) return TruthValue::Unknown;
-        if (found_equal && found_different) return TruthValue::Unknown;
-        return found_equal ? TruthValue::True : TruthValue::False;
+        if (!found_property) result.truth = TruthValue::Unknown;
+        else if (found_equal && found_different) result.truth = TruthValue::Unknown;
+        else result.truth = found_equal ? TruthValue::True : TruthValue::False;
+        break;
 
     case ConditionOperator::NotEqual:
-        if (!found_property) return TruthValue::Unknown;
-        if (found_equal && found_different) return TruthValue::Unknown;
-        return found_equal ? TruthValue::False : TruthValue::True;
+        if (!found_property) result.truth = TruthValue::Unknown;
+        else if (found_equal && found_different) result.truth = TruthValue::Unknown;
+        else result.truth = found_equal ? TruthValue::False : TruthValue::True;
+        break;
 
     case ConditionOperator::Exists:
-        return found_property ? TruthValue::True : TruthValue::Unknown;
+        result.truth = found_property ? TruthValue::True : TruthValue::Unknown;
+        break;
     }
 
-    return TruthValue::Unknown;
-}
-
-struct ConditionSupport {
-    unsigned confidence{0};
-    std::uint64_t latest_observation{0};
-    bool found{false};
-};
-
-ConditionSupport supporting_evidence(const RuleCondition& condition,
-                                     const std::vector<Fact>& facts) {
-    ConditionSupport support;
-
-    for (const auto& fact : facts) {
-        if (!fact.fresh || fact.subject != condition.subject ||
-            fact.property != condition.property) {
-            continue;
-        }
-
-        bool supports = false;
-        switch (condition.operation) {
-        case ConditionOperator::Equal:
-            supports = fact.value == condition.value;
-            break;
-        case ConditionOperator::NotEqual:
-            supports = fact.value != condition.value;
-            break;
-        case ConditionOperator::Exists:
-            supports = true;
-            break;
-        }
-
-        if (!supports) continue;
-        support.found = true;
-        support.confidence = std::max(support.confidence, fact.confidence);
-        support.latest_observation =
-            std::max(support.latest_observation, fact.observed_at);
-    }
-
-    return support;
+    return result;
 }
 
 bool same_fact(const Fact& left, const Fact& right) {
@@ -97,7 +94,8 @@ bool same_fact(const Fact& left, const Fact& right) {
 
 RuleEvaluation RuleEvaluator::evaluate(const std::vector<Rule>& rules,
                                         const std::vector<Fact>& facts,
-                                        std::size_t budget) const {
+                                        std::size_t budget,
+                                        std::size_t max_facts_examined) const {
     RuleEvaluation result;
     std::vector<Fact> known = facts;
     std::vector<bool> fired(rules.size(), false);
@@ -130,18 +128,22 @@ RuleEvaluation RuleEvaluator::evaluate(const std::vector<Rule>& rules,
             std::uint64_t latest_observation = 0;
 
             for (const auto& condition : rule.premises) {
-                const auto truth = evaluate_condition(condition, known);
-                premises = TruthEvaluator::conjunction(premises, truth);
+                const auto evaluation = evaluate_condition(
+                    condition, known, result.facts_examined,
+                    max_facts_examined);
+                if (evaluation.budget_exhausted) {
+                    result.fact_budget_exhausted = true;
+                    return result;
+                }
+
+                premises = TruthEvaluator::conjunction(premises, evaluation.truth);
                 if (premises == TruthValue::False) break;
 
-                if (truth == TruthValue::True) {
-                    const auto support = supporting_evidence(condition, known);
-                    if (support.found) {
-                        premise_confidence =
-                            std::min(premise_confidence, support.confidence);
-                        latest_observation =
-                            std::max(latest_observation, support.latest_observation);
-                    }
+                if (evaluation.truth == TruthValue::True && evaluation.has_support) {
+                    premise_confidence =
+                        std::min(premise_confidence, evaluation.confidence);
+                    latest_observation =
+                        std::max(latest_observation, evaluation.latest_observation);
                 }
             }
 

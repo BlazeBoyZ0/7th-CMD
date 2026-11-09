@@ -71,6 +71,7 @@ struct ReasoningRequest {
     std::size_t max_candidates{256};
     std::size_t max_rule_evaluations{128};
     std::size_t max_facts_examined{1024};
+    std::size_t max_rule_facts_examined{4096};
 };
 
 struct ReasoningResult {
@@ -84,7 +85,9 @@ struct ReasoningResult {
     std::string explanation;
     SearchReport search;
     std::size_t rule_evaluations{0};
+    std::size_t rule_facts_examined{0};
     bool rule_budget_exhausted{false};
+    bool rule_fact_budget_exhausted{false};
     bool budget_exhausted{false};
 };
 
