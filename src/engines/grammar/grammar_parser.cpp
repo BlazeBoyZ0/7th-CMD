@@ -78,6 +78,11 @@ ParseMatch GrammarParser::parse(const std::vector<std::string>& input,const Gram
             put(m,"name",m.tokens,skip_articles(m.tokens,after_entity),loc);
             if(loc<m.tokens.size())put(m,"destination",m.tokens,loc+1,m.tokens.size());
         }
+        if(loc<m.tokens.size()) {
+            m.slots["destination_relation"] = {
+                lower(m.tokens[loc]), true, loc, loc + 1
+            };
+        }
         if(!m.slots.contains("name"))m.missing_slots.push_back("name");
     } else if(m.operation=="rename"||m.operation=="move"||m.operation=="copy") {
         const auto sep=find_any(m.tokens,p?p->destination_markers:std::vector<std::string>{"to"},after_entity);
