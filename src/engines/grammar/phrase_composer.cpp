@@ -26,11 +26,15 @@ bool is_polite_clause(const std::vector<std::string>& clause) {
         std::all_of(clause.begin(), clause.end(), is_polite_word);
 }
 
+bool is_reference_pronoun(const std::string& token) {
+    return token == "it" || token == "that" || token == "this" ||
+           token == "itt";
+}
+
 bool is_name_phrase(const std::vector<std::string>& clause) {
     return clause.size() >= 3 &&
-        ((clause[0] == "name" && (clause[1] == "it" || clause[1] == "that")) ||
-         (clause[0] == "call" && (clause[1] == "it" || clause[1] == "that")) ||
-         (clause[0] == "name" && clause[1] == "it"));
+        ((clause[0] == "name" || clause[0] == "call") &&
+         is_reference_pronoun(clause[1]));
 }
 
 bool is_location_phrase(const std::vector<std::string>& clause) {
@@ -40,8 +44,7 @@ bool is_location_phrase(const std::vector<std::string>& clause) {
                       clause[0] == "move";
     if (!verb) return false;
     std::size_t position = 1;
-    if (clause[position] == "it" || clause[position] == "that" ||
-        clause[position] == "this") ++position;
+    if (is_reference_pronoun(clause[position])) ++position;
     return position < clause.size() &&
         (clause[position] == "on" || clause[position] == "in" ||
          clause[position] == "inside" || clause[position] == "within" ||
@@ -60,11 +63,13 @@ std::vector<std::vector<std::string>> split_clauses(
             current.clear();
             continue;
         }
-        if (tokens[i] == "and" && !current.empty() && i + 1 < tokens.size()) {
+        if (tokens[i] == "and" && i + 1 < tokens.size()) {
             const auto& next = tokens[i + 1];
-            if (next == "put" || next == "place" || next == "keep" ||
-                next == "save" || next == "move" || next == "name" ||
-                next == "call") {
+            const bool follow_up = next == "put" || next == "place" ||
+                next == "keep" || next == "save" || next == "move" ||
+                next == "name" || next == "call";
+            if (follow_up && current.empty()) continue;
+            if (follow_up && !current.empty()) {
                 clauses.push_back(std::move(current));
                 current.clear();
                 continue;
@@ -148,8 +153,7 @@ std::vector<std::string> PhraseComposer::compose(
 
         if (!has_destination && is_location_phrase(clause)) {
             std::size_t position = 1;
-            if (clause[position] == "it" || clause[position] == "that" ||
-                clause[position] == "this") ++position;
+            if (is_reference_pronoun(clause[position])) ++position;
             const std::string marker =
                 clause[position] == "to" ? "on" : clause[position];
             result.push_back(marker);
