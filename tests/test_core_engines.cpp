@@ -378,7 +378,14 @@ void test_grammar_adversarial_boundaries() {
         composer.compose(malformed, malformed_tokens, config);
     expect(incomplete_composition ==
                std::vector<std::string>({"create", "a", "folder"}),
-           "an incomplete naming fragment is not promoted into a name");
+           "an incomplete naming fragment is removed from the composed intent");
+
+    const GrammarEngine incomplete_grammar;
+    const auto incomplete_intent = incomplete_grammar.interpret(
+        "create a folder, name it");
+    expect(!incomplete_intent.valid &&
+               !incomplete_intent.missing_information.empty(),
+           "an incomplete follow-up phrase cannot become a fabricated folder name");
 
     const auto unknown_prefix = processor.process_detailed(
         "yo, create a folder, name it Games");
@@ -506,7 +513,7 @@ void test_grammar_interpretation() {
     expect(!incomplete.valid && !incomplete.missing_information.empty(),
            "incomplete instructions request missing information");
 
-    expect(create.schema_version == 1 && !create.id.empty() &&
+    expect(create.schema_version == 2 && !create.id.empty() &&
                create.slots.contains("name") && create.slots.contains("destination"),
            "CIR carries a schema version, unique identifier, and structured slots");
     expect(create.pattern_id == "create_named_entity",
