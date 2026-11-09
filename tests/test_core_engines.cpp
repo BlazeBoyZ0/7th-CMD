@@ -145,7 +145,7 @@ void test_grammar_input_metadata() {
     expect(tokens.size() == 7,
            "detailed tokenization keeps quoted multi-word values as one token");
     if (tokens.size() == 7) {
-        expect(tokens[5].text == "My  Games" && tokens[5].quoted,
+        expect(tokens[4].text == "My  Games" && tokens[4].quoted,
                "quoted token content and quote metadata are preserved");
         expect(tokens[0].begin == 0 && tokens[0].end == 6 &&
                    tokens[0].normalized == "create",
@@ -161,8 +161,8 @@ void test_grammar_input_metadata() {
     const auto clauses = processor.process_detailed(
         "make a folder, name it Games; put it on Desktop!");
     expect(clauses.size() == 10 &&
-               clauses[3].punctuation_after == "," &&
-               clauses[6].punctuation_after == ";",
+               clauses[2].punctuation_after == "," &&
+               clauses[5].punctuation_after == ";",
            "clause punctuation is retained as token metadata");
 }
 
