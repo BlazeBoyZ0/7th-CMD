@@ -86,6 +86,11 @@ add_test(
     COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/test_rename_clarification.sh $<TARGET_FILE:7thcmd>
 )
 
+add_test(
+    NAME 7thcmd_interactive_controls
+    COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_controls.sh $<TARGET_FILE:7thcmd>
+)
+
 target_compile_definitions(7thcmd_tests PRIVATE
     SEVENTH_CMD_TEST_GRAMMAR_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/../config/grammar\"
 )
