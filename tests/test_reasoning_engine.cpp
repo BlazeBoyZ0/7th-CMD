@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -145,6 +146,21 @@ void test_incomplete_search_never_proves_truth_or_absence() {
     expect(!candidate_limited.evidence.empty(),
            "partial evidence remains available for diagnostics");
 
+    request.facts = {
+        fact("target", "exists", "false"),
+        fact("target", "exists", "true")
+    };
+    request.max_candidates = 1;
+    const auto partial_negative = ReasoningEngine{}.evaluate(request);
+    expect(partial_negative.truth == TruthValue::Unknown &&
+               partial_negative.search.truncated(),
+           "an early negative fact cannot prove FALSE while later evidence is unsearched");
+
+    request.facts = {
+        fact("target", "exists", "true"),
+        fact("target", "exists", "false"),
+        fact("target", "exists", "true")
+    };
     request.max_candidates = 8;
     request.max_facts_examined = 1;
     const auto scan_limited = ReasoningEngine{}.evaluate(request);
