@@ -448,6 +448,9 @@ SubsystemResult CommandSubsystem::create_folder(
 
     execution::ExecutionRequest execution_request;
     execution_request.task_id = request.task_id;
+    execution_request.cir_id = intent.id;
+    execution_request.plan_id = plan.id;
+    execution_request.plan_step_id = plan.tasks.front().id;
     execution_request.operation = plan.tasks.front().operation;
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
@@ -466,7 +469,11 @@ SubsystemResult CommandSubsystem::create_folder(
     verification_request.expected["exists"] = "true";
     verification_request.actual["exists"] =
         platform_.filesystem().exists(target_path) ? "true" : "false";
-    if (!verification_system_.verify(verification_request).verified) {
+    const auto verification_result = verification_system_.verify(verification_request);
+    (void)execution_engine_.set_verification(request.task_id,
+        verification_result.verified ? execution::VerificationOutcome::Passed
+                                     : execution::VerificationOutcome::Failed);
+    if (!verification_result.verified) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
             return failure(request.request_id,
                 "The operation ran, verification failed, and the plan state could not be marked failed.");
@@ -694,6 +701,9 @@ SubsystemResult CommandSubsystem::open_target(
 
     execution::ExecutionRequest execution_request;
     execution_request.task_id = request.task_id;
+    execution_request.cir_id = intent.id;
+    execution_request.plan_id = plan.id;
+    execution_request.plan_step_id = plan.tasks.front().id;
     execution_request.operation = operation;
     execution_request.input_data = operation_data;
     execution_request.requires_authorization = true;
@@ -711,7 +721,11 @@ SubsystemResult CommandSubsystem::open_target(
     verification_request.expected["started"] = "true";
     verification_request.actual["started"] =
         executed.output_data.contains("started") ? executed.output_data.at("started") : "false";
-    if (!verification_system_.verify(verification_request).verified) {
+    const auto verification_result = verification_system_.verify(verification_request);
+    (void)execution_engine_.set_verification(request.task_id,
+        verification_result.verified ? execution::VerificationOutcome::Passed
+                                     : execution::VerificationOutcome::Failed);
+    if (!verification_result.verified) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
             return failure(request.request_id,
                 "The open request could not be verified and the plan state could not be marked failed.");
@@ -1029,6 +1043,9 @@ SubsystemResult CommandSubsystem::modify_path(
 
     execution::ExecutionRequest execution_request;
     execution_request.task_id = request.task_id;
+    execution_request.cir_id = intent.id;
+    execution_request.plan_id = plan.id;
+    execution_request.plan_step_id = plan.tasks.front().id;
     execution_request.operation = execution_operation;
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
@@ -1057,7 +1074,11 @@ SubsystemResult CommandSubsystem::modify_path(
         verification_request.actual["source_exists"] =
             platform_.filesystem().exists(source_path.string()) ? "true" : "false";
     }
-    if (!verification_system_.verify(verification_request).verified) {
+    const auto verification_result = verification_system_.verify(verification_request);
+    (void)execution_engine_.set_verification(request.task_id,
+        verification_result.verified ? execution::VerificationOutcome::Passed
+                                     : execution::VerificationOutcome::Failed);
+    if (!verification_result.verified) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
             return failure(request.request_id,
                 "The filesystem operation ran, verification failed, and the plan state could not be marked failed.");
@@ -1210,6 +1231,9 @@ SubsystemResult CommandSubsystem::delete_target(
 
     execution::ExecutionRequest execution_request;
     execution_request.task_id = request.task_id;
+    execution_request.cir_id = intent.id;
+    execution_request.plan_id = plan.id;
+    execution_request.plan_step_id = plan.tasks.front().id;
     execution_request.operation = "delete_path";
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
@@ -1228,7 +1252,11 @@ SubsystemResult CommandSubsystem::delete_target(
     verification_request.expected["exists"] = "false";
     verification_request.actual["exists"] =
         platform_.filesystem().exists(path) ? "true" : "false";
-    if (!verification_system_.verify(verification_request).verified) {
+    const auto verification_result = verification_system_.verify(verification_request);
+    (void)execution_engine_.set_verification(request.task_id,
+        verification_result.verified ? execution::VerificationOutcome::Passed
+                                     : execution::VerificationOutcome::Failed);
+    if (!verification_result.verified) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
             return failure(request.request_id,
                 "The delete action ran, verification failed, and the plan state could not be marked failed.");
@@ -1371,6 +1399,9 @@ SubsystemResult CommandSubsystem::count_file(
 
     execution::ExecutionRequest execution_request;
     execution_request.task_id = request.task_id;
+    execution_request.cir_id = intent.id;
+    execution_request.plan_id = plan.id;
+    execution_request.plan_step_id = plan.tasks.front().id;
     execution_request.operation = "read_text";
     execution_request.input_data = plan.tasks.front().input_data;
     execution_request.requires_authorization = true;
@@ -1418,7 +1449,11 @@ SubsystemResult CommandSubsystem::count_file(
     verification_request.expected["exists"] = "true";
     verification_request.actual["exists"] =
         platform_.filesystem().exists(path) ? "true" : "false";
-    if (!verification_system_.verify(verification_request).verified) {
+    const auto verification_result = verification_system_.verify(verification_request);
+    (void)execution_engine_.set_verification(request.task_id,
+        verification_result.verified ? execution::VerificationOutcome::Passed
+                                     : execution::VerificationOutcome::Failed);
+    if (!verification_result.verified) {
         if (!plan_state_manager_.fail(plan, plan.tasks.front().id)) {
             return failure(request.request_id,
                 "The file could not be verified after reading, and the plan state could not be marked failed.");
@@ -1460,6 +1495,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
     std::map<std::string, std::string> local_paths;
     std::vector<std::string> target_paths;
     std::vector<std::string> folder_names;
+    std::vector<std::string> cir_ids;
     std::vector<std::shared_ptr<const permissions::AuthorizedRoot>> authorized_roots;
     std::vector<std::shared_ptr<const permissions::AuthorizedRoot>> destination_roots;
     target_paths.reserve(clauses.size());
@@ -1470,6 +1506,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
 
     for (std::size_t index = 0; index < clauses.size(); ++index) {
         const auto intent = grammar_engine_.interpret(clauses[index]);
+        cir_ids.push_back(intent.id);
         if (!intent.valid) {
             return failure(request.request_id,
                 intent.error.empty() ? "A sequence step could not be understood." : intent.error);
@@ -1636,6 +1673,7 @@ SubsystemResult CommandSubsystem::create_folder_chain(
 
         execution::ExecutionRequest execution_request;
         execution_request.task_id = request.task_id + "-chain-" + std::to_string(index + 1);
+        execution_request.cir_id = cir_ids[index];
         execution_request.plan_id = plan.id;
         execution_request.plan_step_id = task.id;
         execution_request.operation = task.operation;
