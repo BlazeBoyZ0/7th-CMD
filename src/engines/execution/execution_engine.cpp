@@ -128,9 +128,21 @@ bool ExecutionEngine::record_aggregate(
     aggregate.plan_id = plan_id;
     aggregate.status = ExecutionStatus::Success;
 
+    // An aggregate is authoritative only when every requested child record
+    // is present. Never silently turn a partial history into a successful task.
+    std::vector<std::string> seen_step_task_ids;
+    seen_step_task_ids.reserve(step_task_ids.size());
     for (const auto& step_task_id : step_task_ids) {
+        if (step_task_id.empty() ||
+            std::find(seen_step_task_ids.begin(), seen_step_task_ids.end(),
+                      step_task_id) != seen_step_task_ids.end()) {
+            return false;
+        }
+        seen_step_task_ids.push_back(step_task_id);
+
         const auto found = records_.find(step_task_id);
-        if (found == records_.end()) continue;
+        if (found == records_.end() || found->second.steps.empty()) return false;
+
         aggregate.steps.insert(aggregate.steps.end(),
                                found->second.steps.begin(), found->second.steps.end());
         if (found->second.status == ExecutionStatus::NeedsPermission) {
@@ -140,13 +152,21 @@ bool ExecutionEngine::record_aggregate(
             aggregate.status = ExecutionStatus::Failure;
         }
     }
-    if (aggregate.steps.empty()) return false;
+    if (aggregate.steps.empty() || !tracker_.begin(task_id)) return false;
 
-    if (tracker_.begin(task_id)) {
-        if (aggregate.status == ExecutionStatus::Success) (void)tracker_.complete(task_id);
-        else if (aggregate.status == ExecutionStatus::NeedsPermission) (void)tracker_.block(task_id);
-        else (void)tracker_.fail(task_id);
+    bool transitioned = false;
+    if (aggregate.status == ExecutionStatus::Success) {
+        transitioned = tracker_.complete(task_id);
+    } else if (aggregate.status == ExecutionStatus::NeedsPermission) {
+        transitioned = tracker_.block(task_id);
+    } else {
+        transitioned = tracker_.fail(task_id);
     }
+    if (!transitioned) {
+        (void)tracker_.fail(task_id);
+        return false;
+    }
+
     retain_record(std::move(aggregate));
     return true;
 }
