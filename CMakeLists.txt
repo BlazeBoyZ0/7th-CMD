@@ -28,6 +28,7 @@ add_executable(7thcmd
     src/engines/grammar/tokenizer.cpp
     src/engines/grammar/normalizer.cpp
     src/engines/grammar/input_processor.cpp
+    src/engines/grammar/typo_corrector.cpp
     src/engines/grammar/grammar_parser.cpp
     src/engines/grammar/entity_extractor.cpp
     src/engines/grammar/grammar_config.cpp
