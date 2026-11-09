@@ -1731,11 +1731,13 @@ SubsystemResult CommandSubsystem::handle_single(const SubsystemRequest& request,
 
     // Reapply answers collected while this task was paused before deciding
     // whether the original instruction is still incomplete.
+    bool applied_clarification = false;
     for (const auto& [field, answer] : request.context) {
         constexpr const char* prefix = "clarification.";
         if (field.rfind(prefix, 0) != 0 || answer.empty()) continue;
         const auto slot = field.substr(std::char_traits<char>::length(prefix));
         intent.slots[slot] = grammar::SlotValue{answer, false, 0, 0};
+        applied_clarification = true;
         if (slot == "name" || slot == "target" || slot == "file") {
             intent.name = answer;
         } else if (slot == "source") {
@@ -1750,7 +1752,8 @@ SubsystemResult CommandSubsystem::handle_single(const SubsystemRequest& request,
                         intent.missing_information.end(), slot),
             intent.missing_information.end());
     }
-    if (intent.missing_information.empty() && !intent.operation.empty()) {
+    if (applied_clarification && intent.missing_information.empty() &&
+        !intent.operation.empty()) {
         intent.valid = true;
         intent.error.clear();
     }
