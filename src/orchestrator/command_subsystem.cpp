@@ -1727,7 +1727,34 @@ SubsystemResult CommandSubsystem::handle_single(const SubsystemRequest& request,
         return result;
     }
 
-    const auto intent = grammar_engine_.interpret(raw_input);
+    auto intent = grammar_engine_.interpret(raw_input);
+
+    // Reapply answers collected while this task was paused before deciding
+    // whether the original instruction is still incomplete.
+    for (const auto& [field, answer] : request.context) {
+        constexpr const char* prefix = "clarification.";
+        if (field.rfind(prefix, 0) != 0 || answer.empty()) continue;
+        const auto slot = field.substr(std::char_traits<char>::length(prefix));
+        intent.slots[slot] = grammar::SlotValue{answer, false, 0, 0};
+        if (slot == "name" || slot == "target" || slot == "file") {
+            intent.name = answer;
+        } else if (slot == "source") {
+            intent.source = answer;
+        } else if (slot == "destination") {
+            intent.destination = answer;
+        } else if (slot == "query") {
+            intent.query = answer;
+        }
+        intent.missing_information.erase(
+            std::remove(intent.missing_information.begin(),
+                        intent.missing_information.end(), slot),
+            intent.missing_information.end());
+    }
+    if (intent.missing_information.empty() && !intent.operation.empty()) {
+        intent.valid = true;
+        intent.error.clear();
+    }
+
     if (!intent.valid) {
         SubsystemResult result;
         result.request_id = request.request_id;
