@@ -77,9 +77,12 @@ CorrectionResult TypoCorrector::correct(
     const auto word = lowercase_ascii(token.text);
     const auto explicit = explicit_corrections.find(word);
     if (explicit != explicit_corrections.end()) {
-        result.value = explicit->second;
-        result.changed = result.value != word;
-        return result;
+        const auto target = lowercase_ascii(explicit->second);
+        if (vocabulary.contains(target)) {
+            result.value = target;
+            result.changed = result.value != word;
+            return result;
+        }
     }
 
     if (vocabulary.contains(word)) {
