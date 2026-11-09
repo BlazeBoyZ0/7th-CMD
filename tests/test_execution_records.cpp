@@ -204,7 +204,7 @@ int main() {
           "aggregate record preserves both verified steps and completed task state");
 
     const auto latest_before_bound = engine.latest_record();
-    check(latest_before_bound && latest_before_bound->task_id == "planned-chain-failure",
+    check(latest_before_bound && latest_before_bound->task_id == "aggregate-original-task",
           "latest_record returns the most recently retained execution");
     check(!engine.record_of("missing-task").has_value(),
           "unknown task identifiers do not produce execution records");
