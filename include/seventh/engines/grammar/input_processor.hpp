@@ -10,6 +10,7 @@ namespace seventh::grammar {
 
 class InputProcessor {
 public:
+    [[nodiscard]] std::vector<Token> process_detailed(const std::string& input) const;
     [[nodiscard]] std::vector<std::string> process(const std::string& input) const;
 
 private:
