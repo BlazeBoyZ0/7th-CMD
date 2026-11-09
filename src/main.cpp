@@ -169,6 +169,14 @@ int main(int argc, char* argv[]) {
         const auto input = input_handler.read_line();
         if (input.empty()) break;
         if (input == "exit" || input == "quit") break;
+        if (input == "--help" || input == "--h") {
+            seventh::cli::print_help();
+            continue;
+        }
+        if (input == "--version" || input == "--v") {
+            seventh::cli::print_version();
+            continue;
+        }
 
         auto outcome = orchestrator.execute(
             "command", {{"raw_input", input}});
@@ -260,11 +268,19 @@ int main(int argc, char* argv[]) {
         response.error = outcome.result.error;
         response.missing_information = outcome.result.missing_information;
 
-        for (const auto* key : {"operation", "entity_type", "name",
-                                "destination", "path", "verified", "directory", "query", "count", "metric", "value", "bytes", "paths", "completed_steps", "total_steps", "displayed", "truncated", "matches", "source"}) {
-            const auto found = outcome.result.result_data.find(key);
-            if (found != outcome.result.result_data.end() && !found->second.empty()) {
-                response.details[key] = found->second;
+        const auto inspection = outcome.result.result_data.find("inspection");
+        if (inspection != outcome.result.result_data.end() && inspection->second == "true") {
+            response.operation = "execution inspection";
+            for (const auto& [key, value] : outcome.result.result_data) {
+                if (key != "inspection" && !value.empty()) response.details[key] = value;
+            }
+        } else {
+            for (const auto* key : {"operation", "entity_type", "name",
+                                    "destination", "path", "verified", "directory", "query", "count", "metric", "value", "bytes", "paths", "completed_steps", "total_steps", "displayed", "truncated", "matches", "source"}) {
+                const auto found = outcome.result.result_data.find(key);
+                if (found != outcome.result.result_data.end() && !found->second.empty()) {
+                    response.details[key] = found->second;
+                }
             }
         }
 
