@@ -1582,22 +1582,39 @@ SubsystemResult CommandSubsystem::create_folder_chain(
                 return fail_preflight(index, "Every folder-creation step needs a destination.");
             }
 
-            const auto destination_name = entity_key(intent.destination);
+            // Preserve the parser's raw slots in the plan so a preflight
+            // failure can be diagnosed through "inspect task".
+            draft.input_data["name"] = intent.name;
+            draft.input_data["destination"] = intent.destination;
+
+            // Grammar commonly captures relational wording ("inside it",
+            // "in Projects") as part of the destination slot. Resolve that
+            // relation separately from the entity name used as the map key.
+            auto destination_reference = entity_key(intent.destination);
+            for (const std::string_view prefix : {"inside ", "within ", "in "}) {
+                if (destination_reference.rfind(prefix, 0) == 0) {
+                    destination_reference = entity_key(
+                        destination_reference.substr(prefix.size()));
+                    break;
+                }
+            }
+
             std::string destination;
             bool planned_destination = false;
-            if (destination_name == "it" || destination_name == "that" ||
-                destination_name == "that folder" || destination_name == "previous folder") {
+            if (destination_reference == "it" || destination_reference == "that" ||
+                destination_reference == "that folder" ||
+                destination_reference == "previous folder") {
                 destination = last_created_path;
                 planned_destination = !destination.empty();
             } else {
-                const auto local = local_paths.find(destination_name);
+                const auto local = local_paths.find(destination_reference);
                 if (local != local_paths.end()) {
                     destination = local->second;
                     planned_destination = true;
                 } else {
-                    // Normalize punctuation in phrases such as "on Desktop,"
-                    // before passing a canonical location to the resolver.
-                    destination = resolve_destination(destination_name);
+                    // Resolve ordinary locations such as Desktop after
+                    // removing relational wording and trailing punctuation.
+                    destination = resolve_destination(destination_reference);
                 }
             }
 
@@ -1968,9 +1985,14 @@ SubsystemResult CommandSubsystem::handle(const SubsystemRequest& request) {
             if (!step.error.empty()) result.result_data[prefix + "error"] = step.error;
             for (const auto* key : {"path", "destination", "count", "directory",
                                     "query", "bytes", "displayed", "truncated", "name"}) {
-                const auto value = step.output_data.find(key);
+                auto value = step.output_data.find(key);
                 if (value != step.output_data.end() && !value->second.empty()) {
                     result.result_data[prefix + key] = value->second;
+                    continue;
+                }
+                const auto input = step.input_data.find(key);
+                if (input != step.input_data.end() && !input->second.empty()) {
+                    result.result_data[prefix + key] = input->second;
                 }
             }
         }
