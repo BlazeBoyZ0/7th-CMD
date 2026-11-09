@@ -258,6 +258,12 @@ void test_grammar_phrase_composition() {
                quoted_name.destination == "Desktop",
            "quoted names remain intact while surrounding phrases are composed");
 
+    const auto conversational = grammar.interpret(
+        "hey dude, create a folder named Batch1Test on Desktop, okay?");
+    expect(conversational.valid && conversational.name == "Batch1Test" &&
+               conversational.destination == "Desktop",
+           "recognized courtesy preambles and closings do not obscure a folder command");
+
     const auto ordinary = grammar.interpret(
         "create a folder named Existing on Desktop");
     expect(ordinary.valid && ordinary.name == "Existing" &&
