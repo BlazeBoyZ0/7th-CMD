@@ -130,6 +130,25 @@ int main() {
               failed_verification->steps[0].verification == VerificationOutcome::Failed,
           "failed verification is reflected in the final execution record");
 
+    const auto latest_before_bound = engine.latest_record();
+    check(latest_before_bound && latest_before_bound->task_id == "record-task-3",
+          "latest_record returns the most recently retained execution");
+    check(!engine.record_of("missing-task").has_value(),
+          "unknown task identifiers do not produce execution records");
+
+    for (int index = 0; index < 101; ++index) {
+        ExecutionRequest bounded;
+        bounded.task_id = "bounded-task-" + std::to_string(index);
+        bounded.operation = "create_directory";
+        bounded.input_data["path"] = "/tmp/bounded";
+        (void)engine.execute(bounded);
+    }
+    check(!engine.record_of("record-task-1").has_value(),
+          "record retention evicts the oldest entry after reaching its bound");
+    const auto latest_bounded = engine.latest_record();
+    check(latest_bounded && latest_bounded->task_id == "bounded-task-100",
+          "latest_record remains correct after bounded-history eviction");
+
     if (failures != 0) return EXIT_FAILURE;
     std::cout << "All execution-record tests passed.\n";
     return EXIT_SUCCESS;
