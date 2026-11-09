@@ -361,6 +361,140 @@ void test_planning_dependencies() {
 }
 
 
+
+bool contains_error(const seventh::StringList& errors, const std::string& fragment) {
+    for (const auto& error : errors) {
+        if (error.find(fragment) != std::string::npos) return true;
+    }
+    return false;
+}
+
+void test_planning_stable_order_and_dependency_normalization() {
+    using namespace seventh::planning;
+    PlanningRequest request;
+    request.goal = "Build a dependency-safe task sequence";
+
+    TaskDraft child;
+    child.id = "child";
+    child.operation = "create_directory";
+    child.dependencies = {"parent", "parent"};
+    TaskDraft first;
+    first.id = "first";
+    first.operation = "open_path";
+    TaskDraft parent;
+    parent.id = "parent";
+    parent.operation = "create_directory";
+    TaskDraft second;
+    second.id = "second";
+    second.operation = "read_text";
+
+    request.tasks = {child, first, parent, second};
+    const auto plan = PlanningEngine{}.create_plan(request);
+    expect(plan.valid && plan.tasks.size() == 4,
+           "a valid multi-step plan is accepted after dependency normalization");
+    if (plan.tasks.size() == 4) {
+        expect(plan.tasks[0].id == "first" && plan.tasks[1].id == "parent" &&
+                   plan.tasks[2].id == "child" && plan.tasks[3].id == "second",
+               "topological ordering is deterministic and stable among ready tasks");
+        expect(plan.tasks[2].dependencies.size() == 1,
+               "duplicate dependency declarations are normalized");
+    }
+}
+
+void test_planning_rejects_malformed_dependencies() {
+    using namespace seventh::planning;
+    PlanningRequest request;
+    request.goal = "Validate malformed dependencies";
+    TaskDraft task;
+    task.id = "task";
+    task.operation = "create_directory";
+    task.dependencies = {""};
+    request.tasks = {task};
+
+    const auto empty = PlanningEngine{}.create_plan(request);
+    expect(!empty.valid && contains_error(empty.errors, "empty dependency"),
+           "an empty dependency is reported instead of silently discarded");
+
+    request.tasks[0].dependencies = {"task"};
+    const auto self = PlanningEngine{}.create_plan(request);
+    expect(!self.valid && contains_error(self.errors, "depend on itself"),
+           "a task cannot depend on itself");
+
+    request.tasks[0].dependencies = {"missing"};
+    const auto missing = PlanningEngine{}.create_plan(request);
+    expect(!missing.valid && contains_error(missing.errors, "Missing dependency"),
+           "a dependency on an absent task is rejected");
+}
+
+void test_planning_rejects_duplicate_ids_and_cycles_without_reordering() {
+    using namespace seventh::planning;
+    PlanningRequest request;
+    request.goal = "Reject ambiguous task graphs";
+    TaskDraft first;
+    first.id = "same";
+    first.operation = "create_directory";
+    TaskDraft second = first;
+    request.tasks = {first, second};
+
+    const auto duplicate = PlanningEngine{}.create_plan(request);
+    expect(!duplicate.valid &&
+               contains_error(duplicate.errors, "Duplicate task identifier"),
+           "duplicate task identifiers are rejected before scheduling");
+
+    request.tasks[0].id = "first";
+    request.tasks[0].dependencies = {"second"};
+    request.tasks[1].id = "second";
+    request.tasks[1].dependencies = {"first"};
+    const auto cyclic = PlanningEngine{}.create_plan(request);
+    expect(!cyclic.valid && contains_error(cyclic.errors, "cycle"),
+           "a cyclic graph is rejected");
+    expect(cyclic.tasks.size() == 2 && cyclic.tasks[0].id == "first" &&
+               cyclic.tasks[1].id == "second",
+           "a failed schedule leaves the original task order intact");
+}
+
+void test_planning_limits_and_required_fields() {
+    using namespace seventh::planning;
+    PlanningRequest request;
+    request.goal = "Bound planner resource use";
+    request.max_tasks = 1;
+    TaskDraft first;
+    first.id = "first";
+    first.operation = "create_directory";
+    TaskDraft second;
+    second.id = "second";
+    second.operation = "create_directory";
+    request.tasks = {first, second};
+
+    const auto too_many_tasks = PlanningEngine{}.create_plan(request);
+    expect(!too_many_tasks.valid && too_many_tasks.tasks.empty() &&
+               contains_error(too_many_tasks.errors, "task limit"),
+           "the task limit is enforced before copying the task list");
+
+    request.max_tasks = 8;
+    request.max_dependency_edges = 0;
+    request.tasks[1].dependencies = {"first"};
+    const auto too_many_edges = PlanningEngine{}.create_plan(request);
+    expect(!too_many_edges.valid &&
+               contains_error(too_many_edges.errors, "dependency limit"),
+           "the dependency-edge limit is enforced before normalization");
+
+    request.max_dependency_edges = 8;
+    request.tasks.resize(1);
+    request.tasks[0].operation = "   ";
+    const auto blank_operation = PlanningEngine{}.create_plan(request);
+    expect(!blank_operation.valid &&
+               contains_error(blank_operation.errors, "no operation"),
+           "whitespace-only operations are rejected");
+
+    request.tasks[0].operation = "create_directory";
+    request.goal = "  ";
+    const auto blank_goal = PlanningEngine{}.create_plan(request);
+    expect(!blank_goal.valid && contains_error(blank_goal.errors, "no goal"),
+           "whitespace-only plan goals are rejected");
+}
+
+
 void test_task_lifecycle() {
     using namespace seventh;
 
@@ -567,6 +701,10 @@ int main() {
     test_three_valued_logic();
     test_rule_inference();
     test_planning_dependencies();
+    test_planning_stable_order_and_dependency_normalization();
+    test_planning_rejects_malformed_dependencies();
+    test_planning_rejects_duplicate_ids_and_cycles_without_reordering();
+    test_planning_limits_and_required_fields();
     test_permission_boundaries();
     test_task_lifecycle();
     test_terminal_output_escaping();
