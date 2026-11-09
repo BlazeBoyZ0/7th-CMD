@@ -424,6 +424,16 @@ void test_grammar_adversarial_boundaries() {
     const auto empty_intent = grammar.interpret("");
     expect(!empty_intent.valid,
            "empty input remains an invalid intent rather than becoming a command");
+
+    const auto extra_action = grammar.interpret(
+        "create a folder named Games on Desktop; delete file secret.txt");
+    expect(!extra_action.valid,
+           "an extra unsupported action cannot be silently dropped from a multi-action request");
+
+    const auto duplicate_follow_up = grammar.interpret(
+        "create a folder, name it Games, name it Projects");
+    expect(!duplicate_follow_up.valid,
+           "duplicate naming clauses are rejected instead of choosing one silently");
 }
 
 void test_grammar_relationship_marker_matrix() {
