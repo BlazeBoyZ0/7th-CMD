@@ -375,6 +375,22 @@ void test_grammar_phrase_composition() {
                original_style.destination == "Desktop",
            "casual multi-clause wording, a directory typo, and a pronoun typo compose correctly");
 
+    const auto polite_named = grammar.interpret(
+        "Please create a folder named My Games inside Documents");
+    expect(polite_named.valid && polite_named.operation == "create" &&
+               polite_named.entity_type == "folder" &&
+               polite_named.name == "My Games" &&
+               polite_named.destination == "Documents",
+           "capitalized polite prefixes and multiword names parse as one create intent");
+
+    const auto called_directory = grammar.interpret(
+        "Make a new directory called Projects on Desktop");
+    expect(called_directory.valid && called_directory.operation == "create" &&
+               called_directory.entity_type == "folder" &&
+               called_directory.name == "Projects" &&
+               called_directory.destination == "Desktop",
+           "called markers and directory synonyms extract the intended folder name");
+
     const auto ordinary = grammar.interpret(
         "create a folder named Existing on Desktop");
     expect(ordinary.valid && ordinary.name == "Existing" &&

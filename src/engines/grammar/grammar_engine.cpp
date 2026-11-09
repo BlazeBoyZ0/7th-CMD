@@ -26,12 +26,20 @@ bool is_article_or_modifier(const std::string& token) {
     return token == "a" || token == "an" || token == "the" || token == "new";
 }
 
+std::string lowercase_ascii(std::string value) {
+    for (char& character : value) {
+        character = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(character)));
+    }
+    return value;
+}
+
 bool is_courtesy_word(const std::string& token) {
     static const std::set<std::string> words{
         "hey", "hi", "hello", "please", "kindly", "dude",
         "okay", "ok", "thanks", "thank", "you"
     };
-    return words.contains(token);
+    return words.contains(lowercase_ascii(token));
 }
 
 } // namespace
@@ -78,7 +86,15 @@ CanonicalIntent GrammarEngine::interpret(const std::string& input) const {
         }
     }
 
-    const auto composed = PhraseComposer{}.compose(detailed, tokens, config_);
+    auto composed = PhraseComposer{}.compose(detailed, tokens, config_);
+
+    // Courtesy prefixes are grammar scaffolding, not part of the command.
+    // Strip them after phrase composition so token metadata remains aligned
+    // while the composer is working, and preserve all user-supplied values.
+    while (!composed.empty() && is_courtesy_word(composed.front())) {
+        composed.erase(composed.begin());
+    }
+
     const auto match = GrammarParser{}.parse(composed, config_);
     auto ast = SemanticAnalyzer{}.analyze(AstGenerator{}.generate(match));
     return CirGenerator{}.generate(ast, input);

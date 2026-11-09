@@ -42,7 +42,7 @@ GrammarConfig GrammarConfig::defaults() {
         {"lnes", "lines"}, {"muxh", "much"}
     };
     config.patterns = {
-        {"create_named_entity","create","folder",{"named"},{},{},{},{"on","in","inside","within"}},
+        {"create_named_entity","create","folder",{"named","called"},{},{},{},{"on","in","inside","within"}},
         {"rename_entity","rename","file",{},{},{"to"},{},{}},
         {"move_entity","move","",{},{},{"to"},{},{}},
         {"copy_entity","copy","",{},{},{"to"},{},{}},
